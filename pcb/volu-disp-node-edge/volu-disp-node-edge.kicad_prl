@@ -54,6 +54,7 @@
     "zone_display_mode": 0
   },
   "git": {
+    "integration_disabled": false,
     "repo_type": "",
     "repo_username": "",
     "ssh_key": ""
@@ -117,14 +118,14 @@
   },
   "schematic": {
     "selection_filter": {
-      "graphics": true,
+      "graphics": false,
       "images": true,
       "labels": true,
       "lockedItems": false,
       "otherItems": true,
       "pins": true,
       "symbols": true,
-      "text": true,
+      "text": false,
       "wires": true
     }
   }
