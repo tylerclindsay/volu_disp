@@ -1,6 +1,6 @@
 {
   "board": {
-    "active_layer": 0,
+    "active_layer": 25,
     "active_layer_preset": "",
     "auto_track_width": true,
     "hidden_netclasses": [],
@@ -50,7 +50,7 @@
       "conflict_shadows",
       "shapes"
     ],
-    "visible_layers": "ffffffff_ffffffff_ffffffff_ffffffff",
+    "visible_layers": "ffffffff_ffffffff_fffffff7_ffffffff",
     "zone_display_mode": 0
   },
   "git": {
@@ -74,6 +74,8 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ],
     "col_order": [
@@ -86,7 +88,9 @@
       6,
       7,
       8,
-      9
+      9,
+      10,
+      11
     ],
     "col_widths": [
       186,
@@ -97,6 +101,8 @@
       112,
       112,
       83,
+      112,
+      112,
       112,
       112
     ],
@@ -118,14 +124,14 @@
   },
   "schematic": {
     "selection_filter": {
-      "graphics": false,
+      "graphics": true,
       "images": true,
       "labels": true,
       "lockedItems": false,
       "otherItems": true,
       "pins": true,
       "symbols": true,
-      "text": false,
+      "text": true,
       "wires": true
     }
   }
