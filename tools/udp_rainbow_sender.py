@@ -2,7 +2,7 @@
 """Stream a test rainbow to the ESP32 LED receiver over UDP.
 
 Usage:
-    python udp_rainbow_sender.py 192.168.1.101 --strips 2 --leds 10 --fps 60
+    python tools/udp_rainbow_sender.py 192.168.1.101 --strips 2 --leds 10 --fps 60
 """
 import argparse
 import colorsys

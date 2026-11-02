@@ -1,0 +1,27 @@
+# Prototype display config. Draft schema — not yet read by any code.
+# Units: mm. null = not decided yet.
+version: 1
+
+geometry:
+  slices: null              # number of 2D slices of strips
+  strips_per_slice: null
+  pixels_per_strip: null
+  strip_spacing: 50         # between strips within a slice
+  pixel_spacing: 50         # between pixels along a strip
+  slice_spacing: null       # between slices
+  # Every other slice (odd index) is shifted by these amounts:
+  odd_slice_offset:
+    sideways: 25            # ½ strip_spacing
+    vertical: 25            # ½ pixel_spacing
+
+timing:
+  max_fps: 120              # animations are rendered at this rate
+
+network:
+  udp_port: 7777
+
+drive_nodes:
+  - id: 1
+    ip: 192.168.1.101       # 192.168.1.(100 + id)
+    # Which strips (slice, strip) map to this node's strip indices 0..63:
+    strips: null
