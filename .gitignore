@@ -70,3 +70,7 @@ Testing/
 # Local data (audio, stems, generated animations)
 /data/*
 !/data/README.md
+
+# Python virtual environments
+.venv/
+__pycache__/

@@ -1,0 +1,23 @@
+# Install torch first (CUDA build):
+#   uv pip install torch==2.11.0 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu128
+# then: uv pip install -r requirements.txt
+beat-this==1.1.0
+demucs==4.1.0
+# SongFormer's remote code fails to load under transformers 5 (meta-device
+# init); 4.51.1 is the version its repo pins. MAEST and CLAP work on it too.
+transformers==4.51.1
+huggingface_hub
+# SongFormer imports
+muq==0.1.0
+x-transformers==2.4.14
+msaf==0.1.80
+ema-pytorch
+loguru
+omegaconf
+einops
+# audio I/O and analysis
+soundfile
+soxr
+numpy
+scipy
+librosa
