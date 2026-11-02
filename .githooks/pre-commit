@@ -1,0 +1,7 @@
+#!/bin/sh
+# Block commits that contain secrets. Bypass (not recommended): git commit --no-verify
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks not found - install it (scoop install gitleaks)" >&2
+    exit 1
+fi
+exec gitleaks git --pre-commit --staged --redact --no-banner -v

@@ -1,0 +1,21 @@
+# gitleaks config: default ruleset plus project-specific rules.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "ota-password"
+description = "Hardcoded OTA password (use secrets.ini instead)"
+regex = '''(?i)(?:OTA_PASSWORD["']?\s*"|ota_password\s*=\s*|--auth\s*=\s*)([^\s"$]{4,})'''
+secretGroup = 1
+keywords = ["ota_password", "--auth"]
+
+[[rules]]
+id = "url-embedded-credentials"
+description = "Credentials embedded in a URL"
+regex = '''[a-z][a-z0-9+.-]*://[^/\s:@]+:([^/\s:@]{4,})@'''
+secretGroup = 1
+keywords = ["://"]
+
+[allowlist]
+description = "Redacted placeholders"
+regexes = ['''\*\*\*REDACTED\*\*\*''', '''change-me''']

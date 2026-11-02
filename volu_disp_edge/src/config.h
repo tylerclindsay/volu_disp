@@ -69,7 +69,10 @@
 //  OTA
 // ---------------------------------------------------------------------------
 #define OTA_ENABLED  1
-#define OTA_PASSWORD "***REDACTED***"
+// OTA_PASSWORD is injected via build_flags from secrets.ini (gitignored)
+#ifndef OTA_PASSWORD
+#error "OTA_PASSWORD not defined - copy secrets.ini.example to secrets.ini"
+#endif
 
 // ---------------------------------------------------------------------------
 //  Protocol / debug

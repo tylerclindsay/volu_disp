@@ -1,0 +1,19 @@
+#!/bin/sh
+# Second line of defence: scan every commit about to be pushed.
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-push: gitleaks not found - install it (scoop install gitleaks)" >&2
+    exit 1
+fi
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue          # branch deletion
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha --not --remotes"          # new branch: unpushed commits only
+    else
+        range="$remote_sha..$local_sha"
+    fi
+    gitleaks git --log-opts="$range" --redact --no-banner -v || status=1
+done
+[ $status -ne 0 ] && echo "pre-push: secrets detected, push blocked" >&2
+exit $status
