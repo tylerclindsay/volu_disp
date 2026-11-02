@@ -16,9 +16,9 @@ Read first:
 > structures or pick frameworks beyond what a task needs until then.
 
 ## Layout
-- `backend/` — Python package `src/volu_gen/` (not yet scaffolded):
-  `geometry/`, `analysis/`, `generators/`, `animfile/`, `output/`,
-  `playback/`, `server/`, plus `tests/`.
+- `backend/` — Python package `src/volu_gen/` (uv project; see its
+  README): `analysis/` (implemented), then `geometry/`, `generators/`,
+  `animfile/`, `output/`, `playback/`, `server/`, plus `tests/`.
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, stems cache, animation files) goes in `../data/`.
 

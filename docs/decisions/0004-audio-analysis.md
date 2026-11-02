@@ -1,6 +1,6 @@
 # 0004 — Audio analysis pipeline
 
-Date: 2026-11-01. Status: accepted (not yet implemented in gen_system).
+Date: 2026-11-01. Status: accepted; implemented in `gen_system/backend` (`volu_gen.analysis`).
 
 ## Context
 Generators need more than a BPM: a beat grid they can trust to the
@@ -78,7 +78,8 @@ parts.
 About 10–15 s per 3-min track on the dev PC; stems (5.8 s, timed on one
 track) and SongFormer (~1 s per minute of audio) take most of it. Peak
 VRAM ≤ 6.7 GB on 9 of 10 tracks and 7.7 GB on Skrillex - Kora, all under
-an 8 GB cap. Models download ~4 GB on first run.
+an 8 GB cap. Models download ~4 GB on first run. (Backend port, same 10
+tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
 
 ### Environment
 - Python 3.11, torch 2.11 + torchaudio 2.11 (cu128), Windows 11.
@@ -95,6 +96,12 @@ an 8 GB cap. Models download ~4 GB on first run.
   exactly 0.60. Needs a sturdier check.
 - **Variable-tempo tracks** (Skrillex - Kora) fall back to Beat This's raw
   beats with `tempo: variable`. Don't chase these further.
+- **Stem split varies with demucs's random time shift**, enough to flip
+  near-threshold drums/bass states (up to 15 dB in quiet bars). The backend
+  seeds it so results are reproducible, but the drop rule's "bass on in the
+  phrase's first bar" check is sensitive to it: with seeded stems, Devin
+  Wild's verified drop at bar 69 is no longer tagged (the kick's low end
+  lands in drums instead of bass). Address with the per-bar drop rework.
 - **Studio needs a BPM / grid-offset override** for when the fit is wrong;
   an override replaces the fitted grid and re-runs only the stages that
   depend on it (phrases, per-bar energy).
@@ -115,20 +122,24 @@ One file per track in the analysis cache, keyed by audio hash. Outline:
 ```jsonc
 {
   "version": 1,
-  "source": { "sha256": "…", "duration": 184.2 },
-  "models": { "stems": "htdemucs", "beats": "beat_this final0", … },
-  "tempo": {
+  "source": { "sha256": "…", "path": "…", "duration": 184.2 },
+  "models": { "stems": "demucs htdemucs", "beats": "beat_this final0", … },
+  "tempo": {                     // what generators use
     "mode": "grid",              // "grid" | "variable" (raw beats, no grid)
-    "bpm": 160.0, "fitted_bpm": 160.085,
-    "offset": 0.139,             // first grid beat, s
-    "meter": 4, "downbeat_phase": 2, "fit_score": 0.60,
+    "bpm": 160.0,
+    "offset": 0.889,             // time of a downbeat, s (grid extends both ways)
+    "meter": 4,
     "override": null,            // { "bpm", "offset" } set from Studio
-    "beats": [0.139, 0.514, …], "downbeats": [0.889, …]
+    "beats": [0.139, 0.514, …], "downbeats": [0.889, …],
+    "fit": { "used": true, "bpm": 160.0, "fitted_bpm": 160.085,
+             "offset": 0.889, "score": 0.60, "windows": […], … },
+    "raw": { "beats": […], "downbeats": […] }   // Beat This picks
   },
   "sections": [ { "start": 0.0, "end": 14.28, "start_bar": 1 }, … ],
   "phrases": [
     { "start": 0.889, "end": 12.889, "start_bar": 1, "bars": 8,
-      "section": 0, "tags": ["breakdown"] }, …
+      "section": 0,              // index into sections
+      "tags": ["breakdown"], "jump_db": 0.0, … }, …
   ],
   "events": [ { "bar": 9, "time": 12.889, "event": "bass_out" }, … ],
   "bars": {                      // one value per bar, dB re. the stem's loud level
