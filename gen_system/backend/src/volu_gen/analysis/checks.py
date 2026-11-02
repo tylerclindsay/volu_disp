@@ -35,7 +35,8 @@ def write_checks(t: TrackCache):
 
 
 def write_click_track(path: Path, audio: np.ndarray, tempo: dict, phrases: list[dict]):
-    """Mix at -6 dB + clicks: high on downbeats, low on beats, chime on phrases."""
+    """Mix at -6 dB + clicks: high on downbeats, low on beats, chime on
+    phrases, and a second, higher chime on drops."""
     out = audio.mean(axis=0) * 0.5
     n = int(0.03 * BASE_SR)
     env = np.exp(-np.arange(n) / (0.006 * BASE_SR))
@@ -51,4 +52,6 @@ def write_click_track(path: Path, audio: np.ndarray, tempo: dict, phrases: list[
         click(b, 1760 if round(b, 3) in downs else 880, 0.4)
     for p in phrases:
         click(p["start"], 2637, 0.3, int(0.4 * BASE_SR))
+        if "drop" in p["tags"]:
+            click(p["start"] + 0.12, 3520, 0.3, int(0.4 * BASE_SR))
     sf.write(path, np.clip(out, -1, 1), BASE_SR)

@@ -54,12 +54,14 @@ the reasons, and the `analysis.json` outline. Key rules:
   to a whole BPM when within 0.1. No phase jumps. Don't "improve" this with
   local tempo tracking.
 - SongFormer gives boundaries only; don't use its labels. Phrases are
-  8 bars from each section start; drums/bass in/out are events, not cuts.
+  8 bars from each section start and each drop; drops are found per bar
+  (`../docs/decisions/0005-per-bar-drops.md`); drums/bass in/out are
+  events, not cuts.
 - Store raw CLAP cosines per track; z-score mood words across the library.
 - A user BPM / grid-offset override replaces the fitted grid and re-runs only
   the grid-dependent steps (phrases, per-bar energy), not the models.
-- Open work: per-bar drop detection (drops start phrases), a sturdier grid
-  accept/reject check, `tempo: variable` fallback (see the decision).
+- Open work: a sturdier grid accept/reject check, `tempo: variable`
+  fallback (see the decision).
 - **Pin `transformers==4.51.1`.** SongFormer's remote code breaks on
   transformers 5.x. Python 3.11, torch 2.11 cu128.
 

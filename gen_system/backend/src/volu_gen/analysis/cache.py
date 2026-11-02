@@ -11,7 +11,12 @@ import soundfile as sf
 
 from .audio import BASE_SR, STEM_NAMES, file_sha256, load_audio
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# Older versions whose model outputs are still valid; only the grid-dependent
+# results (phrases, events, per-bar energy) are dropped and re-derived.
+# v2: per-bar drop detection, `low` energy lane.
+COMPATIBLE_VERSIONS = {1}
+DERIVED_KEYS = ["phrases", "events", "bars"]
 
 
 def default_data_dir() -> Path:
@@ -27,7 +32,11 @@ class TrackCache:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.json_path = self.dir / "analysis.json"
         self.data = json.loads(self.json_path.read_text()) if self.json_path.exists() else {}
-        if self.data.get("version") != SCHEMA_VERSION:
+        if self.data.get("version") in COMPATIBLE_VERSIONS:
+            for k in DERIVED_KEYS:
+                self.data.pop(k, None)
+            self.data["version"] = SCHEMA_VERSION
+        elif self.data.get("version") != SCHEMA_VERSION:
             self.data = {"version": SCHEMA_VERSION}
         self.data["source"] = {**self.data.get("source", {}), "sha256": sha, "path": str(self.path)}
         self.data.setdefault("models", {})

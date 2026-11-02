@@ -5,6 +5,7 @@ grid changes (e.g. a user override)."""
 from __future__ import annotations
 
 import numpy as np
+from scipy.signal import butter, sosfiltfilt
 
 from .audio import BASE_SR, STEM_NAMES
 
@@ -12,7 +13,12 @@ from .audio import BASE_SR, STEM_NAMES
 PHRASE_BARS = 8
 STEM_ON_DB = -18.0       # a stem counts as "on" in a bar above this level
 MIN_STATE_BARS = 2       # on/off changes must hold this long to count
-DROP_JUMP_DB = 4.0       # mix energy jump into a phrase that marks a drop
+DROP_JUMP_DB = 4.0       # mix jump (2 bars after vs. 2 before) that marks a drop
+DROP_ARRIVAL_DB = 2.0    # the drop bar itself is within this of the next bar (not a fill)
+# Commented out (decision 0005): fitted to too few cases, not checked on held-out tracks.
+# DROP_LEVEL_DB = -3.0     # a drop's first 2 bars reach at least this (0 dB = loud level)
+# DROP_HOLD_BARS = 4       # drums stay on in all but one of the drop's first bars
+LOW_HZ = 150.0           # "low" lane: drums + bass below this (kick and bass together)
 BUILD_SLOPE_DB = 0.35    # dB/bar rise across a phrase that marks a build-up
 BREAKDOWN_DRUMS = 0.25   # drums on in < this fraction of bars → breakdown
 
@@ -36,36 +42,97 @@ def stable_states(on: np.ndarray) -> np.ndarray:
     return out
 
 
+def low_band(signal: np.ndarray, sr: int = BASE_SR) -> np.ndarray:
+    sos = butter(4, LOW_HZ, "low", fs=sr, output="sos")
+    return sosfiltfilt(sos, signal, axis=-1)
+
+
 def bar_energy(mix: np.ndarray, stems: dict[str, np.ndarray], downbeats: np.ndarray,
                duration: float, sr: int = BASE_SR) -> dict[str, np.ndarray]:
+    """Per-bar dB of the mix, each stem, and `low`: drums + bass summed and
+    low-passed. demucs splits a kick's low end between drums and bass
+    differently from track to track (and with its random shift), so drop
+    detection uses the sum, which doesn't care where the split falls."""
     bounds = np.append(downbeats, duration)
     energy = {n: bar_db(stems[n], bounds, sr) for n in STEM_NAMES}
     energy["mix"] = bar_db(mix, bounds, sr)
+    energy["low"] = bar_db(low_band(stems["drums"] + stems["bass"], sr), bounds, sr)
     return energy
+
+
+def mix_jumps(mix: np.ndarray) -> np.ndarray:
+    """Per bar: mean mix level of this bar and the next minus the 2 bars before."""
+    return np.array([mix[i:i + 2].mean() - mix[max(0, i - 2):i].mean() if i else 0.0
+                     for i in range(len(mix))])
+
+
+def find_drops(energy: dict[str, np.ndarray], on: dict[str, np.ndarray]) -> list[int]:
+    """Bars (0-based) where a drop starts, checked at every bar.
+
+    A drop: the mix jumps >= DROP_JUMP_DB, and the low lane and drums are
+    on. If the bar isn't at the new level yet (a one-bar fill before the
+    drop), the drop moves to the first of the next 2 bars that is, with
+    drums and low on. Of drops within 2 bars of each other, the biggest jump
+    wins. A jump less than PHRASE_BARS after the previous drop is the same
+    drop coming back from a short break.
+
+    Known false drops (decision 0005): a riser into a drop, and one bar of
+    drums opening a buildup. The level and drum-hold checks that rejected
+    them are commented out below.
+    """
+    mix = energy["mix"]
+    n = len(mix)
+    jump = mix_jumps(mix)
+
+    def arrived(i: int) -> bool:
+        return i + 1 >= n or mix[i] >= mix[i + 1] - DROP_ARRIVAL_DB
+
+    best: dict[int, float] = {}  # drop bar → biggest jump of the candidates placed there
+    for i in range(1, n):
+        if not (jump[i] >= DROP_JUMP_DB and on["low"][i] and on["drums"][i]):
+            continue
+        # if mix[i:i + 2].mean() < DROP_LEVEL_DB:
+        #     continue
+        # if np.sum(~on["drums"][i:i + DROP_HOLD_BARS]) > 1:
+        #     continue
+        # Not there yet: move to where the level arrives (kept in place if it never does).
+        at = next((j for j in range(i, min(i + 3, n))
+                   if arrived(j) and on["low"][j] and on["drums"][j]), i)
+        best[at] = max(best.get(at, -np.inf), jump[i])
+    drops: list[int] = []
+    for i in sorted(best):
+        if any(abs(j - i) <= 2 and best[j] > best[i] for j in best):
+            continue
+        if drops and i - drops[-1] < PHRASE_BARS:
+            continue
+        drops.append(i)
+    return drops
 
 
 def compute_phrases(energy: dict[str, np.ndarray], downbeats: np.ndarray, duration: float,
                     sections: list[dict]) -> dict:
     """Phrases, events, and section start bars from per-bar energy.
 
-    Phrase boundaries: section starts snapped to the nearest downbeat, then
-    PHRASE_BARS-bar splits from each. (Snapping to a global 4-bar grid was
-    tried and moved a real drop that starts 2 bars off that grid.) Drum/bass
-    on/off changes are point events; they don't cut phrases.
+    Phrase boundaries: section starts snapped to the nearest downbeat and
+    drop bars (find_drops), then PHRASE_BARS-bar splits from each. (Snapping
+    to a global 4-bar grid was tried and moved a real drop that starts 2
+    bars off that grid.) Drum/bass on/off changes are point events; they
+    don't cut phrases.
 
     Returns {"sections", "phrases", "events", "bars"} for analysis.json.
     """
     downbeats = np.asarray(downbeats, float)
     bounds = np.append(downbeats, duration)
     n_bars = len(downbeats)
-    on = {n: stable_states(energy[n] > STEM_ON_DB) for n in ("drums", "bass")}
+    on = {n: stable_states(energy[n] > STEM_ON_DB) for n in ("drums", "bass", "low")}
 
     def bar_at(sec: float) -> int:
         return int(np.clip(np.abs(downbeats - sec).argmin(), 0, n_bars - 1))
 
     sections = sections or [{"start": 0.0, "end": duration}]
     sections = [{**s, "start_bar": bar_at(s["start"]) + 1} for s in sections]
-    cuts = sorted({0} | {s["start_bar"] - 1 for s in sections})
+    drops = find_drops(energy, on)
+    cuts = sorted({0} | {s["start_bar"] - 1 for s in sections} | set(drops))
     events = []
     for n in ("drums", "bass"):
         for i in np.nonzero(np.diff(on[n].astype(int)))[0] + 1:
@@ -86,9 +153,7 @@ def compute_phrases(energy: dict[str, np.ndarray], downbeats: np.ndarray, durati
         tags = []
         if drums_frac < BREAKDOWN_DRUMS:
             tags.append("breakdown")
-        # Known gap (decision 0004): drops are only found at phrase starts.
-        prev_drop = bool(phrases) and "drop" in phrases[-1]["tags"]
-        if jump >= DROP_JUMP_DB and on["drums"][a] and on["bass"][a] and not prev_drop:
+        if a in drops:
             tags.append("drop")
         if slope >= BUILD_SLOPE_DB:
             tags.append("buildup")

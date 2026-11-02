@@ -19,7 +19,7 @@ Triggered from the UI when the user adds an audio file:
      per track (Beat This); variable-tempo tracks fall back to raw beats,
      flagged `tempo: variable`.
    - **Sections** — boundaries from SongFormer.
-   - **Phrases** — 8-bar phrases from each section start, tagged drop /
+   - **Phrases** — 8-bar phrases from each section start and drop, tagged drop /
      buildup / breakdown; drums/bass in/out events; per-bar energy per stem.
    - **Genre** (MAEST) and **mood** (CLAP, a weak hint).
    - Must fit an 8 GB NVIDIA card. BPM and grid offset can be overridden

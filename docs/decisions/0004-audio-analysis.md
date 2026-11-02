@@ -69,7 +69,8 @@ parts.
   are **point events**, not phrase cuts.
 - Tags per phrase: `breakdown` (drums on < 25% of bars), `drop` (mix jumps
   ≥ 4 dB into the phrase with drums and bass on, not right after another
-  drop), `buildup` (mix rises ≥ 0.35 dB/bar). Thresholds are tuned by ear;
+  drop — **replaced by 0005**: drops are found per bar and start phrases),
+  `buildup` (mix rises ≥ 0.35 dB/bar). Thresholds are tuned by ear;
   they are constants in `spike.py`.
 - Phrasing and clicks confirmed by ear on Devin Wild - When The Book Is
   Closed.
@@ -88,9 +89,8 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
 - Exact package list: `tools/analysis_spike/requirements.txt`.
 
 ## Known gaps (fix in the backend)
-- **Drops are only tagged at phrase starts**, so a drop that lands off a
-  phrase start is missed. Detect drops per bar, and make a drop start a new
-  phrase.
+- ~~Drops are only tagged at phrase starts.~~ Fixed by
+  `0005-per-bar-drops.md`.
 - **Grid accept/reject is fragile.** It uses the median Beat This
   probability at grid points (≥ 0.6); Hard Driver's correct grid scores
   exactly 0.60. Needs a sturdier check.
@@ -98,10 +98,9 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
   beats with `tempo: variable`. Don't chase these further.
 - **Stem split varies with demucs's random time shift**, enough to flip
   near-threshold drums/bass states (up to 15 dB in quiet bars). The backend
-  seeds it so results are reproducible, but the drop rule's "bass on in the
-  phrase's first bar" check is sensitive to it: with seeded stems, Devin
-  Wild's verified drop at bar 69 is no longer tagged (the kick's low end
-  lands in drums instead of bass). Address with the per-bar drop rework.
+  seeds it so results are reproducible. Drop detection no longer depends on
+  the drums/bass split (0005 uses drums + bass summed); the `drums_in/out`
+  and `bass_in/out` events still do.
 - **Studio needs a BPM / grid-offset override** for when the fit is wrong;
   an override replaces the fitted grid and re-runs only the stages that
   depend on it (phrases, per-bar energy).
@@ -121,7 +120,7 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
 One file per track in the analysis cache, keyed by audio hash. Outline:
 ```jsonc
 {
-  "version": 1,
+  "version": 2,
   "source": { "sha256": "…", "path": "…", "duration": 184.2 },
   "models": { "stems": "demucs htdemucs", "beats": "beat_this final0", … },
   "tempo": {                     // what generators use
@@ -138,13 +137,15 @@ One file per track in the analysis cache, keyed by audio hash. Outline:
   "sections": [ { "start": 0.0, "end": 14.28, "start_bar": 1 }, … ],
   "phrases": [
     { "start": 0.889, "end": 12.889, "start_bar": 1, "bars": 8,
-      "section": 0,              // index into sections
+      "section": 0,              // index into sections; phrases restart at
+                                 // each section start and each drop (0005)
       "tags": ["breakdown"], "jump_db": 0.0, … }, …
   ],
   "events": [ { "bar": 9, "time": 12.889, "event": "bass_out" }, … ],
   "bars": {                      // one value per bar, dB re. the stem's loud level
     "energy_db": { "mix": […], "drums": […], "bass": […],
-                   "other": […], "vocals": […] }
+                   "other": […], "vocals": […],
+                   "low": […] }  // drums + bass < 150 Hz (0005)
   },
   "genre": { "model": "discogs-maest-30s-pw-129e",
              "top": [ { "label": "Electronic---Hardstyle", "score": 0.76 }, … ] },

@@ -2,7 +2,8 @@
 
 Python package `volu_gen` (`src/volu_gen/`). Implemented so far:
 **`analysis/`** — stems, beat grid, sections, phrases, genre, mood
-(`../../docs/decisions/0004-audio-analysis.md`). Still to come: geometry,
+(`../../docs/decisions/0004-audio-analysis.md`, drops:
+`0005-per-bar-drops.md`). Still to come: geometry,
 generators, animation file I/O, output (mapping, packetizer, UDP sender),
 playback, and the HTTP/WebSocket server for the UI.
 
@@ -22,7 +23,7 @@ uv run python -m volu_gen.analysis <audio files or folders> [--check]
   and `stems/`), keyed by audio content. Finished stages are skipped;
   `--force stems,beats` recomputes; `--stages` runs a subset.
 - `--check` writes `check/clicks.wav` (high click on downbeats, low on
-  beats, chime on phrase starts) and Audacity label files (File → Import →
+  beats, chime on phrase starts, a second higher chime on drops) and Audacity label files (File → Import →
   Labels). Check any change to grid or phrase rules by ear with these.
 - `--vram-limit-gb 8` emulates the 8 GB target card.
 - `--override BPM DOWNBEAT_S` sets a user grid on one analyzed track (time
