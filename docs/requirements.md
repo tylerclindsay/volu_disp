@@ -14,10 +14,19 @@ Status: draft — collected from discussion, not final.
 Triggered from the UI when the user adds an audio file:
 1. **Stem separation** with demucs → four stems: `vocals`, `drums`, `bass`,
    `other` ("other" is the remaining instrumental content).
-2. **BPM detection** on the track.
-3. **Animation generator** — uses the stems and BPM (in different parts of
-   the animation) to create graphics synchronized to the music. What the
-   animations look like is not yet decided.
+2. **Analysis** (`decisions/0004-audio-analysis.md`):
+   - **Beat grid** — one constant tempo and continuous beat/downbeat grid
+     per track (Beat This); variable-tempo tracks fall back to raw beats,
+     flagged `tempo: variable`.
+   - **Sections** — boundaries from SongFormer.
+   - **Phrases** — 8-bar phrases from each section start, tagged drop /
+     buildup / breakdown; drums/bass in/out events; per-bar energy per stem.
+   - **Genre** (MAEST) and **mood** (CLAP, a weak hint).
+   - Must fit an 8 GB NVIDIA card. BPM and grid offset can be overridden
+     from the UI.
+3. **Animation generator** — uses the stems and analysis (in different
+   parts of the animation) to create graphics synchronized to the music.
+   What the animations look like is not yet decided.
 4. Output: an **animation file** of structured frame data, rendered at the
    maximum frame rate (currently 120 FPS, a single config value). Lower
    playback frame rates are derived from it at playback.
@@ -26,7 +35,8 @@ Triggered from the UI when the user adds an audio file:
 - Settings, including playback frame rate.
 - Song selector reading local audio files on the PC; play songs.
 - While a song is selected/playing: a **3D visualization** of the display
-  output, **waveforms of each stem**, and the **detected BPM**, while the
+  output, **waveforms of each stem** with sections and phrases, and the
+  **detected BPM**, while the
   animation's pixel data streams to the display over UDP in sync with audio.
 - A play queue (tracks play end to end; no playlists or fades in v1).
 - Tweak generator parameters (constant per track) and re-render the whole

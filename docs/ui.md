@@ -51,7 +51,9 @@ One audio device and one display, so the engine is in one mode at a time:
 Table of tracks: title, length, stems status, BPM, animation status
 (none / rendering / ready / stale), actions.
 - **Add files** / **Scan folder**. Adding a track starts the pipeline
-  automatically (stems → BPM → render with default parameters).
+  automatically (stems → analysis → render with default parameters).
+- BPM column shows `variable` for tracks without a constant grid
+  (`decisions/0004-audio-analysis.md`).
 - Row actions: **Play now**, **Add to queue**, open in Studio.
 - "Stale" = the active version was rendered against a different geometry
   hash or generator version.
@@ -65,8 +67,8 @@ Table of tracks: title, length, stems status, BPM, animation status
 │                                         │  1. Track C   ✓     │
 │                                         │  2. Track B   ◔     │
 ├─────────────────────────────────────────┴─────────────────────┤
-│ vocals / drums / bass / other lanes, beat grid, playhead;     │
-│ click to seek                                                 │
+│ section / phrase bands, vocals / drums / bass / other lanes,  │
+│ beat grid, playhead; click to seek                            │
 └───────────────────────────────────────────────────────────────┘
 ```
 - **Queue:** ordered list, drag to reorder, remove. No playlists. Tracks
@@ -89,8 +91,16 @@ Table of tracks: title, length, stems status, BPM, animation status
 │ Draft · v3 (active) · v2     [Save draft as version] [Set active] │
 └───────────────────────────────────────────────────────────────────┘
 ```
-- Header: track, detected BPM (editable to correct detection), beat-grid
-  offset.
+- Header: track, detected BPM and beat-grid offset, both **editable to
+  override** a wrong grid fit (e.g. nudge the offset by ms or by one beat,
+  type the true BPM). An override replaces the fitted grid and re-runs only
+  the grid-dependent analysis (phrases, per-bar energy) — no model re-runs;
+  "reset" returns to the fit. Variable-tempo tracks show `tempo: variable`
+  and can be forced onto a grid the same way.
+- Stem lanes carry **section and phrase bands** above them: section
+  boundaries, 8-bar phrases with drop / buildup / breakdown tags, and
+  drums/bass in/out markers, aligned to the beat grid. They show what the
+  generator sees and make a bad grid or phrasing obvious at a glance.
 - **Parameters** are constant for the whole track (no per-section values or
   automation in v1). The generator may still vary its output over time from
   the stems and BPM; the user-set parameters don't.

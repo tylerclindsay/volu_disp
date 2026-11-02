@@ -27,9 +27,10 @@ Read first:
 ## Recommended approach
 
 ### 1. Separate offline generation from real-time playback
-- **Generation** (audio → stems → BPM → animation) is offline/batch: it can be
-  slow (demucs especially), and be re-run. Cache stems and analysis per track
-  (keyed by audio hash) so re-generating animations doesn't re-run demucs.
+- **Generation** (audio → stems → analysis → animation) is offline/batch: it
+  can be slow (demucs especially), and be re-run. Cache stems and analysis
+  per track (keyed by audio hash) so re-generating animations doesn't re-run
+  demucs.
   Output is a deterministic, pre-rendered **animation file**: audio
   reference + frame rate + voxel frames + metadata (BPM, generator
   version/params, geometry hash).
@@ -40,6 +41,27 @@ Read first:
   and send frames. No analysis or rendering in the hot path.
 - Live/reactive modes (if wanted later) should still produce frames through
   the same frame → output pipeline.
+
+### 1a. Audio analysis (`analysis/`)
+Decided — see `../docs/decisions/0004-audio-analysis.md` for the pipeline,
+the reasons, and the `analysis.json` outline. Key rules:
+- Port from `../tools/analysis_spike/spike.py`; it is the reference
+  implementation. Re-check any change by ear (click track + Audacity labels,
+  as the spike writes them) on the spike's tracks before trusting it.
+- One model on the GPU at a time (load, run, unload); stay under 8 GB VRAM.
+  SongFormer runs in 150 s windows with 60 s overlap — never whole-track.
+- Beat grid: one constant tempo and one continuous grid per track, snapped
+  to a whole BPM when within 0.1. No phase jumps. Don't "improve" this with
+  local tempo tracking.
+- SongFormer gives boundaries only; don't use its labels. Phrases are
+  8 bars from each section start; drums/bass in/out are events, not cuts.
+- Store raw CLAP cosines per track; z-score mood words across the library.
+- A user BPM / grid-offset override replaces the fitted grid and re-runs only
+  the grid-dependent steps (phrases, per-bar energy), not the models.
+- Open work: per-bar drop detection (drops start phrases), a sturdier grid
+  accept/reject check, `tempo: variable` fallback (see the decision).
+- **Pin `transformers==4.51.1`.** SongFormer's remote code breaks on
+  transformers 5.x. Python 3.11, torch 2.11 cu128.
 
 ### 2. The audio clock is the master clock
 - Derive the current frame index from the audio device's playback position
@@ -97,10 +119,10 @@ Generators never know about nodes, strips, or packets.
 - Generators: deterministic output for a given audio + params (snapshot tests).
 
 ### 8. Tech stack (tentative — not decided)
-- Frontend: decided � see `../docs/ui.md` (Vite + React + TS, Mantine,
+- Frontend: decided — see `../docs/ui.md` (Vite + React + TS, Mantine,
   react-three-fiber, TanStack Query, Zustand).
-- Generation: Python (demucs is Python/PyTorch; numpy, librosa or similar
-  for BPM/analysis).
+- Generation: Python 3.11 + PyTorch. Analysis models are decided (see 1a);
+  `transformers` pinned to 4.51.1.
 - Playback: start in Python; move the frame sender to a compiled language
   only if measured jitter requires it.
 - Dev machine is Windows 11; keep scripts and paths cross-platform.
