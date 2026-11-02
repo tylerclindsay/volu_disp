@@ -1,4 +1,4 @@
-26452108900855811
+26457518004904535
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -104867,6 +104867,13 @@ footprints
 0
 0
 footprints
+AMASS_XT30PW-M_1x02_P2.50mm_Horizontal
+Connector XT30 Horizontal PCB Male, https://www.tme.eu/Document/6eb2005a51a52592b3f19e8a450c54c8/XT30PW-M.pdf
+RC Connector XT30
+0
+4
+2
+footprints
 BatteryBMSBoardPads
 SMD rectangular pad as test Point, square 1.0mm side length
 test point SMD pad rectangle square
@@ -104965,6 +104972,13 @@ TJA1051TK/3_118
 9
 9
 footprints
+IDC-Header_2x07_P2.54mm_Latch_Vertical_SLIM
+Through hole IDC header, 2x07, 2.54mm pitch, DIN 41651 / IEC 60603-13, double rows latches, https://docs.google.com/spreadsheets/d/16SsEcesNF15N3Lb4niX7dcUr-NY5_MFPQhobNuNppn4/edit#gid=0
+Through hole vertical IDC header THT 2x07 2.54mm double row
+0
+14
+14
+footprints
 IND_VLS3010CX-220M-1
 
 
@@ -105062,6 +105076,13 @@ SOP50P810X120-57N
 0
 57
 57
+footprints
+SOP65P640X120-20N
+
+
+0
+20
+20
 footprints
 SOT-23-5-DBV_TEX
 

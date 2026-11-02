@@ -5009,7 +5009,7 @@
 	)
 	(global_label "+12V_IN"
 		(shape output)
-		(at 43.18 179.07 0)
+		(at 43.18 181.61 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -5019,7 +5019,7 @@
 		)
 		(uuid "0f340144-1b56-4b09-bc59-8909089cb935")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 54.1481 179.07 0)
+			(at 54.1481 181.61 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -5713,7 +5713,7 @@
 	)
 	(global_label "PWR_GOOD"
 		(shape output)
-		(at 107.95 113.03 0)
+		(at 95.885 113.03 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -5723,7 +5723,7 @@
 		)
 		(uuid "5bafb761-5276-44be-8f95-684301f2d323")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 121.0952 113.03 0)
+			(at 109.0302 113.03 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -6527,7 +6527,7 @@
 	)
 	(global_label "+12V_SW"
 		(shape input)
-		(at 107.95 109.22 0)
+		(at 95.885 109.22 0)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -6537,7 +6537,7 @@
 		)
 		(uuid "aca75e67-960a-401e-a05c-fe0b53536fe8")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 119.6437 109.22 0)
+			(at 107.5787 109.22 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -7297,7 +7297,7 @@
 	)
 	(global_label "+12V_IN"
 		(shape input)
-		(at 72.39 110.49 180)
+		(at 66.04 110.49 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
@@ -7307,7 +7307,7 @@
 		)
 		(uuid "e142a5b4-deaf-43fa-b6e7-7d11f8deab5b")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 61.4219 110.49 0)
+			(at 55.0719 110.49 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14273,7 +14273,7 @@
 	)
 	(symbol
 		(lib_id "power:GND")
-		(at 43.18 181.61 90)
+		(at 43.18 179.07 90)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
@@ -14282,7 +14282,7 @@
 		(fields_autoplaced yes)
 		(uuid "c3368f7e-877a-4757-9c41-7e71b6c11346")
 		(property "Reference" "#PWR096"
-			(at 49.53 181.61 0)
+			(at 49.53 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14291,7 +14291,7 @@
 			)
 		)
 		(property "Value" "GND"
-			(at 46.99 181.6099 90)
+			(at 46.99 179.0699 90)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14300,7 +14300,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 43.18 181.61 0)
+			(at 43.18 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14309,7 +14309,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 43.18 181.61 0)
+			(at 43.18 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -14318,7 +14318,7 @@
 			)
 		)
 		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 43.18 181.61 0)
+			(at 43.18 179.07 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16578,8 +16578,8 @@
 		)
 	)
 	(sheet
-		(at 72.39 100.965)
-		(size 35.56 20.32)
+		(at 66.04 100.965)
+		(size 29.845 20.32)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -16594,7 +16594,7 @@
 		)
 		(uuid "1f76796c-fd28-490a-abf0-26cf9d802edd")
 		(property "Sheetname" "Hot Swap Control"
-			(at 72.39 100.2534 0)
+			(at 66.04 100.2534 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16603,7 +16603,7 @@
 			)
 		)
 		(property "Sheetfile" "hot_swap_control.kicad_sch"
-			(at 72.39 121.8696 0)
+			(at 66.04 121.8696 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -16612,7 +16612,7 @@
 			)
 		)
 		(pin "+12V_IN" input
-			(at 72.39 110.49 180)
+			(at 66.04 110.49 180)
 			(uuid "76bfbb68-da99-40d2-933d-13ea45293cfd")
 			(effects
 				(font
@@ -16622,7 +16622,7 @@
 			)
 		)
 		(pin "+12V_OUT" output
-			(at 107.95 109.22 0)
+			(at 95.885 109.22 0)
 			(uuid "4fd55e53-5ab6-4294-8afd-4473eac32f06")
 			(effects
 				(font
@@ -16632,7 +16632,7 @@
 			)
 		)
 		(pin "PG" output
-			(at 107.95 113.03 0)
+			(at 95.885 113.03 0)
 			(uuid "b9fa78c6-c540-4f0b-8bc0-4dbc2caf1247")
 			(effects
 				(font
