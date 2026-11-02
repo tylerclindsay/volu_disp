@@ -29,8 +29,8 @@ network:
 #
 # Strip numbering within a node: z-major, then x — strip = (z - z0) * width
 # + (x - x0). Strips 0–31 are on edge node A, 32–63 on edge node B.
+# (Planned default; physical wiring not final.)
 # Pixel 0 of each strip is at the top (y = 0 is the top).
-# (Both orderings are assumptions until the physical wiring is decided.)
 drive_nodes:
   - id: 1
     ip: 192.168.1.101           # 192.168.1.(100 + id)

@@ -83,9 +83,12 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 - Each (x, z) column inside a section is one strip on that node. Sections
   must not overlap, must together cover the whole display, and each must hold
   ≤ 64 strips (and strips short enough for the target FPS).
-- Defined per display in `config/displays/*.yaml`. The strip numbering inside
-  a node and which end of a strip is pixel 0 depend on the physical wiring,
-  which isn't decided yet; the config states the current assumption.
+- Defined per display in `config/displays/*.yaml`. Prototype: node 1 owns
+  slices z 0–3, node 2 owns z 4–7 (40 strips each).
+- **Pixel 0 is at the top of every strip** (y = 0 is the top).
+- Strip numbering inside a node — planned default, wiring not final:
+  slice by slice, then across (`strip = (z - z0) * width + (x - x0)`);
+  strips 0–31 on the first edge node, 32–63 on the second.
 
 ## Wire protocol
 Host → drive node over UDP, port 7777. Spec: `docs/protocol.md`; the firmware
@@ -101,6 +104,6 @@ receives data for its own strips.
   from `config/displays/`.
 - Record decisions in `docs/decisions/` (numbered, one per file) and update
   this file when facts above change.
-- Open hardware questions: physical wiring order of strips within a drive
-  node and pixel 0 at top vs. bottom; whether the protocol should pack
+- Open hardware questions: final physical wiring order of strips within a
+  drive node; whether the protocol should pack
   multiple strips per packet; how multi-node sync tolerance will be measured.
