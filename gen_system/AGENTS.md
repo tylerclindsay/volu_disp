@@ -97,7 +97,8 @@ Generators never know about nodes, strips, or packets.
 - Generators: deterministic output for a given audio + params (snapshot tests).
 
 ### 8. Tech stack (tentative â€” not decided)
-- Frontend: React + TypeScript (Vite). 3D preview with react-three-fiber.
+- Frontend: decided — see `../docs/ui.md` (Vite + React + TS, Mantine,
+  react-three-fiber, TanStack Query, Zustand).
 - Generation: Python (demucs is Python/PyTorch; numpy, librosa or similar
   for BPM/analysis).
 - Playback: start in Python; move the frame sender to a compiled language

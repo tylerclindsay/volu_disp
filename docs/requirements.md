@@ -28,6 +28,10 @@ Triggered from the UI when the user adds an audio file:
 - While a song is selected/playing: a **3D visualization** of the display
   output, **waveforms of each stem**, and the **detected BPM**, while the
   animation's pixel data streams to the display over UDP in sync with audio.
+- A play queue (tracks play end to end; no playlists or fades in v1).
+- Tweak generator parameters (constant per track) and re-render the whole
+  track from the UI.
+- Full UI design: `ui.md`.
 
 ## Open questions
 - Animation style/design.
