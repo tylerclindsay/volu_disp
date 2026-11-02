@@ -64,8 +64,10 @@ Keep these as distinct, testable layers:
 2. **Voxel frames** — one color per pixel, indexed in geometry order.
    Generators treat the display as a point cloud: evaluate a continuous 3D
    field at each pixel's position rather than assume a grid.
-3. **Mapping** — pixel → (drive node, strip, pixel index), plus per-node IP
-   and strip lengths. Must match the firmware's strip layout.
+3. **Mapping** — pixel → (drive node, strip, pixel index), built from each
+   drive node's rectangular `section` in the display config (see
+   `../AGENTS.md` → Drive node mapping). Validate on load: no overlaps, full
+   coverage, ≤ 64 strips per node. Must match the firmware's strip layout.
 4. **Output** — packetizer (mapping + frame → UDP packets) and sender.
 Generators never know about nodes, strips, or packets.
 

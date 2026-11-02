@@ -5,6 +5,9 @@ Status: draft — collected from discussion, not final.
 ## Display
 - Display size, layout, and node count are configurable (prototype now,
   larger build later). See `config/displays/`.
+- Prototype: 10 × 12 × 8 (x wide × y tall × z deep), 2 drive nodes.
+- Configurable mapping: each drive node is assigned a rectangular section
+  (prism or cube) of the display.
 - Target frame rate **120 FPS**, configurable in the UI.
 
 ## Generation pipeline

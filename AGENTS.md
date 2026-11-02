@@ -25,6 +25,7 @@ data/                gitignored: audio library, stem/analysis cache, animations
 - **Drive node** (also called **main node**) — board with a WT32-ETH01
   (ESP32 + LAN8720 Ethernet), 74HCT245 level shifters, and two IDC
   connectors. Receives pixel data over UDP and drives the LEDs. One IP each.
+  Each of its two 245s level-shifts the signals for one edge node.
   PCB: `pcb/volu-disp-node`. Firmware: `firmware/drive_node`.
 - **Edge node** — board connected to a drive node by IDC ribbon cable, with
   four 74HCT595 shift registers (8 outputs each). Supplies power and data to
@@ -65,10 +66,26 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 - Strips hang vertically. Every other slice is offset **sideways by ½ strip
   spacing** and **vertically by ½ pixel spacing**, so nearest-neighbor
   distances are roughly equal throughout the volume.
-- Current values (may change): strip spacing 50 mm, pixel spacing 50 mm →
-  offsets 25 mm.
+- Current values (may change): strip spacing 50 mm, pixel spacing 50 mm,
+  slice spacing 25 mm → offsets 25 mm. This is a body-centered cubic
+  arrangement with a 50 mm cell: each pixel's 8 nearest neighbors are
+  ≈ 43 mm away, the next 6 are 50 mm away, so density is visually even.
+- Axes: x = across a slice (strip within slice), y = vertical (pixel along
+  strip), z = depth (slice).
 - Consequence: the display is a **set of 3D points with real coordinates**,
   not a dense `[x][y][z]` array.
+- **Prototype:** 10 wide (x) × 12 tall (y) × 8 deep (z) = 80 strips,
+  960 pixels. 80 strips > 64 per drive node, so it needs **2 drive nodes**.
+
+## Drive node mapping
+- Each drive node owns one configurable **section**: a rectangular box
+  (prism or cube) of the display, given as index ranges on x, y, z.
+- Each (x, z) column inside a section is one strip on that node. Sections
+  must not overlap, must together cover the whole display, and each must hold
+  ≤ 64 strips (and strips short enough for the target FPS).
+- Defined per display in `config/displays/*.yaml`. The strip numbering inside
+  a node and which end of a strip is pixel 0 depend on the physical wiring,
+  which isn't decided yet; the config states the current assumption.
 
 ## Wire protocol
 Host → drive node over UDP, port 7777. Spec: `docs/protocol.md`; the firmware
@@ -84,7 +101,6 @@ receives data for its own strips.
   from `config/displays/`.
 - Record decisions in `docs/decisions/` (numbered, one per file) and update
   this file when facts above change.
-- Open hardware questions: spacing between slices; prototype dimensions;
-  purpose of the 5th 74HCT595 on the edge node schematic; whether the
-  protocol should pack multiple strips per packet; how multi-node sync
-  tolerance will be measured.
+- Open hardware questions: physical wiring order of strips within a drive
+  node and pixel 0 at top vs. bottom; whether the protocol should pack
+  multiple strips per packet; how multi-node sync tolerance will be measured.

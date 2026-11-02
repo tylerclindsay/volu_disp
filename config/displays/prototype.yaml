@@ -1,27 +1,40 @@
 # Prototype display config. Draft schema — not yet read by any code.
-# Units: mm. null = not decided yet.
+# Units: mm. Indices are 0-based.
+#
+# Axes:   x = across a slice (strip index within a slice)
+#         y = vertical (pixel index along a strip)
+#         z = depth (slice index)
 version: 1
 
 geometry:
-  slices: null              # number of 2D slices of strips
-  strips_per_slice: null
-  pixels_per_strip: null
-  strip_spacing: 50         # between strips within a slice
-  pixel_spacing: 50         # between pixels along a strip
-  slice_spacing: null       # between slices
-  # Every other slice (odd index) is shifted by these amounts:
+  size: { x: 10, y: 12, z: 8 }  # 10 strips wide, 12 pixels tall, 8 slices deep
+  strip_spacing: 50             # x pitch between strips within a slice
+  pixel_spacing: 50             # y pitch between pixels along a strip
+  slice_spacing: 25             # z pitch between slices
+  # Every odd slice (z = 1, 3, ...) is shifted by these amounts:
   odd_slice_offset:
-    sideways: 25            # ½ strip_spacing
-    vertical: 25            # ½ pixel_spacing
+    x: 25                       # ½ strip_spacing
+    y: 25                       # ½ pixel_spacing
 
 timing:
-  max_fps: 120              # animations are rendered at this rate
+  max_fps: 120                  # animations are rendered at this rate
 
 network:
   udp_port: 7777
 
+# Each drive node owns one rectangular box of the display, given as
+# inclusive index ranges [min, max] on each axis. Every (x, z) column inside
+# a box is one strip on that node. Boxes must not overlap, must together
+# cover the whole display, and each must contain ≤ 64 strips (x × z count).
+#
+# Strip numbering within a node: z-major, then x — strip = (z - z0) * width
+# + (x - x0). Strips 0–31 are on edge node A, 32–63 on edge node B.
+# Pixel 0 of each strip is at the top (y = 0 is the top).
+# (Both orderings are assumptions until the physical wiring is decided.)
 drive_nodes:
   - id: 1
-    ip: 192.168.1.101       # 192.168.1.(100 + id)
-    # Which strips (slice, strip) map to this node's strip indices 0..63:
-    strips: null
+    ip: 192.168.1.101           # 192.168.1.(100 + id)
+    section: { x: [0, 9], y: [0, 11], z: [0, 3] }   # 40 strips
+  - id: 2
+    ip: 192.168.1.102
+    section: { x: [0, 9], y: [0, 11], z: [4, 7] }   # 40 strips
