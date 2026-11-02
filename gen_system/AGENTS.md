@@ -47,8 +47,9 @@ Read first:
 - Add a configurable latency offset (audio output latency vs. network + LED
   latch latency) and a way to calibrate it by eye/ear (e.g. a flash + click
   test pattern).
-- Send all drive nodes' packets for a frame back-to-back and set `SHOW` last
-  per node, so nodes latch as close together as possible.
+- Per frame: send all PIXELS packets to all drive nodes, then one broadcast
+  SYNC (protocol v2). The sender keeps its own frame sequence counter,
+  separate from the animation frame index.
 
 ### 3. Keep the UI out of the timing path
 - The playback engine runs as its own process/service; the UI is a client
@@ -86,8 +87,9 @@ Generators never know about nodes, strips, or packets.
 - Version the animation file and config formats from day one.
 
 ### 7. Testing priorities
-- Packetizer: byte-exact tests against `../docs/protocol.md`, including
-  strips longer than 488 pixels and multi-packet frames.
+- Packetizer: byte-exact tests against `../docs/protocol.md` (v2), including
+  packets spanning strip boundaries, node buffers larger than 486 pixels,
+  and the SYNC packet.
 - Geometry/mapping: every physical pixel mapped exactly once; offsets
   produce the expected positions.
 - Timing: a headless playback test that measures frame-send jitter and

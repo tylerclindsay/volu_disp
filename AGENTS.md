@@ -94,6 +94,11 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 Host → drive node over UDP, port 7777. Spec: `docs/protocol.md`; the firmware
 (`firmware/drive_node/src/config.h`) must match it. Each drive node only
 receives data for its own strips.
+- **v2** (current spec): versioned header with a frame number; PIXELS write
+  into a flat per-node buffer (several strips per packet); one broadcast
+  SYNC latches all nodes together; nodes double-buffer.
+- The firmware and `tools/udp_rainbow_sender.py` still implement **v1**
+  until they are updated.
 
 ---
 
@@ -105,5 +110,4 @@ receives data for its own strips.
 - Record decisions in `docs/decisions/` (numbered, one per file) and update
   this file when facts above change.
 - Open hardware questions: final physical wiring order of strips within a
-  drive node; whether the protocol should pack
-  multiple strips per packet; how multi-node sync tolerance will be measured.
+  drive node; how multi-node sync tolerance will be measured.
