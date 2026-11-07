@@ -91,9 +91,12 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
 ## Known gaps (fix in the backend)
 - ~~Drops are only tagged at phrase starts.~~ Fixed by
   `0005-per-bar-drops.md`.
-- **Grid accept/reject is fragile.** It uses the median Beat This
-  probability at grid points (≥ 0.6); Hard Driver's correct grid scores
-  exactly 0.60. Needs a sturdier check.
+- **Grid accept/reject is fragile — accepted as is (2026-11-07).** It uses
+  the median Beat This probability at grid points (≥ 0.6). Correct grids
+  can score near or under it: Hard Driver 0.60, Illenium - Good Things Fall
+  Apart 0.55 (half-time parts). The user chose not to build a sturdier
+  check: tuning analysis for a minority of tracks isn't wanted, and the
+  Studio BPM / grid-offset override covers them.
 - **Variable-tempo tracks** (Skrillex - Kora) fall back to Beat This's raw
   beats with `tempo: variable`. Don't chase these further.
 - **Stem split varies with demucs's random time shift**, enough to flip

@@ -60,8 +60,10 @@ the reasons, and the `analysis.json` outline. Key rules:
 - Store raw CLAP cosines per track; z-score mood words across the library.
 - A user BPM / grid-offset override replaces the fitted grid and re-runs only
   the grid-dependent steps (phrases, per-bar energy), not the models.
-- Open work: a sturdier grid accept/reject check, `tempo: variable`
-  fallback (see the decision).
+- **Tune analysis for the common case.** Don't add rules, checks or
+  thresholds for a minority of tracks (variable tempo, a grid that scores
+  just under the cutoff, odd drops); the Studio BPM / grid-offset override
+  covers those. The grid accept/reject check stays as is (0004 → Known gaps).
 - **Pin `transformers==4.51.1`.** SongFormer's remote code breaks on
   transformers 5.x. Python 3.11, torch 2.11 cu128.
 

@@ -18,8 +18,9 @@ ACT_FPS = 50           # Beat This frame rate
 METER = 4              # the grid assumes 4/4
 GRID_WINDOW_S = 16     # window for reporting grid fit quality
 # Accept the grid if the median beat probability at grid points (over
-# windows with beat activity) reaches this. Fragile: Hard Driver's correct
-# grid scores exactly 0.60 (decision 0004 → Known gaps).
+# windows with beat activity) reaches this. Fragile (Hard Driver's correct
+# grid scores exactly 0.60) but kept: the user override covers such tracks
+# (decision 0004 → Known gaps).
 GRID_MIN_SCORE = 0.6
 SNAP_BPM = 0.1         # fitted tempos this close to a whole BPM are snapped to it
 
