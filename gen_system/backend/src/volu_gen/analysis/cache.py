@@ -1,5 +1,6 @@
-"""Per-track analysis cache: `<data>/cache/<sha256[:16]>/` holds `stems/`
-and `analysis.json`, keyed by audio content so renames don't re-analyze."""
+"""Per-track analysis cache: `<data>/cache/<sha256[:16]>/` holds `stems/`,
+`analysis.json` and `peaks.npz`, keyed by audio content so renames don't
+re-analyze."""
 
 from __future__ import annotations
 
@@ -79,6 +80,15 @@ class TrackCache:
         a, sr = sf.read(self.stem_path(name), dtype="float32", always_2d=True)
         assert sr == BASE_SR
         return a.T
+
+    def stem_blocks(self, name: str, blocksize: int):
+        """The stem as (2, blocksize) float32 chunks, without loading it all."""
+        for b in sf.blocks(self.stem_path(name), blocksize=blocksize, dtype="float32", always_2d=True):
+            yield b.T
+
+    @property
+    def peaks_path(self) -> Path:
+        return self.dir / "peaks.npz"
 
     def save(self):
         self.json_path.write_text(json.dumps(self.data, indent=1))

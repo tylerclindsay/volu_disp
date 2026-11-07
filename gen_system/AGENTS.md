@@ -44,7 +44,9 @@ Read first:
 
 ### 1a. Audio analysis (`analysis/`)
 Decided — see `../docs/decisions/0004-audio-analysis.md` for the pipeline,
-the reasons, and the `analysis.json` outline. Key rules:
+the reasons, and the `analysis.json` outline. Waveform peaks for the UI's
+stem lanes: `../docs/decisions/0006-waveform-peaks.md` (`peaks.npz` per
+track, not in analysis.json). Key rules:
 - Port from `../tools/analysis_spike/spike.py`; it is the reference
   implementation. Re-check any change by ear (click track + Audacity labels,
   as the spike writes them) on the spike's tracks before trusting it.

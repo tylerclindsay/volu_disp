@@ -1,9 +1,11 @@
 """Analysis pipeline (decision 0004): stems → beats/grid → sections → genre
-→ mood → phrases, results cached per track as analysis.json.
+→ mood → phrases, results cached per track as analysis.json; then waveform
+peaks (decision 0006) as peaks.npz.
 
 Runs one stage at a time across all tracks (load model, process every
 track, unload), so peak VRAM is one model's worth. Finished stages are
-skipped unless forced; phrases are re-run whenever an earlier stage ran.
+skipped unless forced; phrases are re-run whenever an earlier stage ran,
+peaks whenever the stems are newer than them.
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ from . import grid as grid_mod
 from .audio import STEM_NAMES, free_gpu
 from .cache import TrackCache
 from .mood import library_z
+from .peaks import BLOCK, LANES, PEAKS_VERSION, chunks_of, compute_peaks, peaks_version, write_peaks
 from .phrases import bar_energy, compute_phrases
 
-STAGES = ["stems", "beats", "sections", "genre", "mood", "phrases"]
+STAGES = ["stems", "beats", "sections", "genre", "mood", "phrases", "peaks"]
+CPU_STAGES = {"phrases", "peaks"}  # no model; run after the model stages
 
 
 def _needs(t: TrackCache, stage: str, force: set[str]) -> bool:
@@ -39,7 +43,7 @@ def analyze(tracks: list[TrackCache], stages: list[str] = STAGES, force: set[str
     from .models import MODEL_IDS, STAGE_MODELS
     stats: dict = {}
     changed: set[int] = set()  # tracks whose grid-dependent results are stale
-    for stage in [s for s in STAGES if s in stages and s != "phrases"]:
+    for stage in [s for s in STAGES if s in stages and s not in CPU_STAGES]:
         todo = [t for t in tracks if _needs(t, stage, force)]
         if not todo:
             continue
@@ -67,11 +71,31 @@ def analyze(tracks: list[TrackCache], stages: list[str] = STAGES, force: set[str
                 run_phrases(t)
             t.save()
             t.drop_audio()
+    if "peaks" in stages:
+        todo = [t for t in tracks if _needs_peaks(t, force)]
+        if todo:
+            log(f"[peaks] {len(todo)} track(s)")
+        for t in todo:
+            if not t.has_stems():
+                log(f"  {t.name}: needs stems, skipped")
+                continue
+            with _timed(stats, t, "peaks", log):
+                run_peaks(t)
+            t.save()  # duration may be new
+            t.drop_audio()
     return stats
 
 
 def _needs_phrases(t: TrackCache, force) -> bool:
     return "phrases" in force or "phrases" not in t.data
+
+
+def _needs_peaks(t: TrackCache, force) -> bool:
+    """Missing, another format version, or older than any stem file."""
+    p = t.peaks_path
+    if "peaks" in force or peaks_version(p) != PEAKS_VERSION:
+        return True
+    return t.has_stems() and any(t.stem_path(n).stat().st_mtime > p.stat().st_mtime for n in STEM_NAMES)
 
 
 def _run_stage(stage: str, model, t: TrackCache):
@@ -95,6 +119,13 @@ def run_phrases(t: TrackCache):
     energy = bar_energy(t.audio, {n: t.stem(n) for n in STEM_NAMES}, downbeats, t.duration)
     sections = [{"start": s["start"], "end": s["end"]} for s in t.data.get("sections", [])]
     t.data.update(compute_phrases(energy, downbeats, t.duration, sections))
+
+
+def run_peaks(t: TrackCache):
+    """Waveform peaks of the mix and each stem (CPU only); stems are streamed."""
+    mix = t.audio
+    lanes = {"mix": chunks_of(mix), **{n: t.stem_blocks(n, BLOCK) for n in LANES if n != "mix"}}
+    write_peaks(t.peaks_path, compute_peaks(lanes, mix.shape[1]))
 
 
 def set_override(t: TrackCache, bpm: float | None, offset: float | None):

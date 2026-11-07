@@ -26,6 +26,7 @@ peak VRAM is one model's worth.
 | genre    | MAEST `discogs-maest-30s-pw-129e`          | top Discogs styles (30 s windows, averaged) |
 | mood     | CLAP `laion/larger_clap_general`           | weak mood hint                         |
 | phrases  | rules on per-bar stem energy (no model)    | phrases, drop/buildup/breakdown, events |
+| peaks    | min/max/rms per bucket (no model)          | UI waveform lanes → `peaks.npz` (`0006-waveform-peaks.md`) |
 
 - **SongFormer labels are ignored.** Its pop labels (verse/chorus/bridge)
   mean nothing for EDM and change from run to run; its boundaries are good.
@@ -120,7 +121,9 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
   the grid should have stayed continuous.
 
 ## analysis.json (backend `analysis/` output)
-One file per track in the analysis cache, keyed by audio hash. Outline:
+One file per track in the analysis cache, keyed by audio hash. Waveform
+peaks are not in it; they are `peaks.npz` next to it (`0006-waveform-peaks.md`).
+Outline:
 ```jsonc
 {
   "version": 2,
