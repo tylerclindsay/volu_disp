@@ -6,7 +6,7 @@ tools/analysis_spike/spike.py — re-check behavior changes by ear
 """
 
 from .pipeline import STAGES, analyze, library_moods, run_phrases, set_override
-from .track import SCHEMA_VERSION, TrackDir, default_data_dir
+from .track import SCHEMA_VERSION, TrackDir, default_data_dir, import_track, stored_tracks
 
-__all__ = ["SCHEMA_VERSION", "STAGES", "TrackDir", "analyze", "default_data_dir",
-           "library_moods", "run_phrases", "set_override"]
+__all__ = ["SCHEMA_VERSION", "STAGES", "TrackDir", "analyze", "default_data_dir", "import_track",
+           "library_moods", "run_phrases", "set_override", "stored_tracks"]

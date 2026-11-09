@@ -57,19 +57,21 @@ flowchart LR
 
 | Process | Role | Writes | Never does |
 |---|---|---|---|
-| API server | Coordinator; the only holder of persistent state | SQLite | Timing, model inference |
+| API server | Coordinator; the only holder of persistent state | SQLite; new track dirs on import | Timing, model inference |
 | Engine | Plays audio, sends frames | nothing | DB access, HTTP, models |
-| Worker | Runs GPU/batch jobs | `data/tracks/` | DB access, playback |
+| Worker | Runs GPU/batch jobs | `data/tracks/` (everything after import) | DB access, playback |
 
 The UI talks only to the API server.
 
 ### API server
 - FastAPI + uvicorn, one asyncio loop. Entry point (`volu serve`); spawns
   the engine and the worker, and respawns them if they die.
-- **SQLite** holds: tracks (sha, path, analysis status, BPM), versions
+- **SQLite** holds: tracks (key, name, original path, analysis status, BPM), versions
   (draft/saved, params, generator version, geometry hash, file path),
   presets, settings, the play queue, and the job queue. The server is its
   only writer.
+- **Imports tracks** (see Storage layout → Import): copies uploaded or
+  scanned audio into a new track directory, then hands it to the worker.
 - Loads and validates the active display config (no overlaps, full
   coverage, ≤ 64 strips per node) and computes the **geometry hash**. It
   passes the config path and hash to the engine and worker, so all three
@@ -197,8 +199,10 @@ and respawn.
 `failed{job_id, error, traceback}`, `log{line}`.
 
 ## Main flows
-1. **Add track.** `POST /tracks` → server inserts the row, queues `analyze`
-   → worker `progress` → UI jobs drawer → `done` → server updates the track
+1. **Add track.** `POST /tracks` (file upload) or `POST /tracks/scan`
+   (folder path) → server imports each file into `tracks/<key>/` (an
+   already-imported file just returns its track) → inserts the row, queues
+   `analyze` → worker `progress` → UI jobs drawer → `done` → server updates the track
    and queues a default `render` → `done` → server records the draft and
    sets it active.
 2. **Play the queue.** Server resolves each track's active version →
@@ -241,13 +245,25 @@ Distinct, separately testable layers (from `gen_system/AGENTS.md`):
 | Path under `data/` | Contents | Writer |
 |---|---|---|
 | `volu.db` | SQLite: tracks, versions, presets, settings, queues | server |
-| `library/` | Default library folder for source audio. Other folders can be added in Settings; the DB stores each track's path. | user |
-| `tracks/<key>/` | Per-track data: stems, analysis, peaks, animations (below) | worker |
+| `tracks/<key>/` | Per-track data: source audio, stems, analysis, peaks, animations (below) | server creates it on import; worker after that |
 
-**`<key>`** is the first 16 hex digits of the SHA-256 of the source file's
-bytes. The same audio under a new name or path reuses its directory; a
-re-encoded or edited file is a new track. The DB maps track id ↔ key ↔
-path.
+**`<key>`** is the first 16 hex digits of the SHA-256 of the imported
+file's bytes. Importing the same file again (under any name or path) finds
+the existing track; a re-encoded or edited file is a new track. The DB maps
+track id ↔ key.
+
+**Import copies the audio in.** There is no library folder that the system
+reads audio from: every track's audio lives in its own directory as
+`source.<ext>`. Reasons:
+- Browser uploads have no path to reference, only bytes.
+- Tag edits or moves of the original change nothing: the key is the hash of
+  the copy taken at import.
+- Tracks keep playing and rendering when the original's drive is missing.
+- A track directory is self-contained, so the engine and worker read only
+  `data/`, and backing up the library is copying one folder.
+
+The cost is one extra copy of each source file (FLAC ≈ 17–72 MB per track
+in the current library), small next to the stems and animations.
 
 **This is stored data, not a cache.** It holds user input that cannot be
 regenerated (the grid override), results that took minutes of GPU per
@@ -258,7 +274,8 @@ How the files in a track directory derive from each other:
 
 ```mermaid
 flowchart LR
-    SRC["source audio<br/>(library folder)"]
+    ORIG["original file<br/>(anywhere)"]
+    SRC["source.‹ext›"]
     STEMS["stems/*.flac"]
     AJ["analysis.json"]
     PK["peaks.npz"]
@@ -266,6 +283,7 @@ flowchart LR
     ENG["engine"]
     UI["UI (via server)"]
 
+    ORIG -->|"import (copy)"| SRC
     SRC -->|"demucs"| STEMS
     SRC -->|"analysis models"| AJ
     STEMS -->|"analysis models"| AJ
@@ -280,7 +298,21 @@ flowchart LR
 ```
 
 ### `data/tracks/<key>/` — per-track data
-Implemented by `TrackDir` (`analysis/track.py`).
+Implemented by `TrackDir` and `import_track` (`analysis/track.py`).
+
+**Import** (`import_track`):
+- Reads the original once, hashing while it copies into
+  `tracks/.import-<uuid>.tmp`, then renames the copy to
+  `tracks/<key>/source.<ext>` (extension lowercased; same volume, so the
+  rename is atomic).
+- If `<key>` already has a source, the copy is discarded and the existing
+  track is returned without writing to it.
+- A new track gets an `analysis.json` with only the `source` block: `sha256`,
+  `name` (the original filename without extension), `original_path` (where
+  it came from; informational only, never read back).
+- Sources: browser upload (**Add files**), a folder path typed in the UI
+  (**Scan folder**, imports every audio file under it), or the CLI
+  (`python -m volu_gen.analysis <files or folders>`).
 
 **Removing a track** from the library *(proposed)*: asks whether to also
 delete its directory. Keeping it makes re-adding the same file instant (no
@@ -291,14 +323,15 @@ size and can delete them.
 
 | File | Contents | Produced by | Size (current library) |
 |---|---|---|---|
+| `source.<ext>` | The imported audio, byte-for-byte; any format ffmpeg decodes | import | ~17–72 MB (FLAC) |
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
 | `features.npz` *(proposed, not yet built)* | Per-frame stem features for generators (envelopes, onsets) at `max_fps` | a future CPU stage | — |
 | `check/` | Listening aids: `clicks.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
-- The mix itself is **not** stored: it is decoded from the source file
-  whenever needed (analysis, peaks, engine playback).
+- The decoded mix is **not** stored: `source.<ext>` is decoded whenever
+  needed (analysis, peaks, engine playback).
 - **`analysis.json` is the source of truth** for analysis, including the
   BPM / grid-offset override (`tempo.override`, written by `regrid` jobs).
   The DB keeps only a copy of what the Library table shows (BPM, tempo mode,
@@ -330,8 +363,8 @@ the same directory and renames it when the job finishes.
 | Frames | `frame_count × P × 3` uint8 RGB in geometry order; frame `i` shows at `i / fps` s from the start of the audio |
 
 Not in the file:
-- **Audio.** Referenced by the track's SHA-256; the engine plays the source
-  file.
+- **Audio.** The engine plays the track's `source.<ext>` from the same
+  directory.
 - **The node/strip mapping.** Applied at playback, so rewiring drive nodes
   (with unchanged pixel positions) needs no re-render. The geometry hash
   therefore covers only pixel positions and order, not `drive_nodes`.

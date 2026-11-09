@@ -33,7 +33,8 @@ Triggered from the UI when the user adds an audio file:
 
 ## UI
 - Settings, including playback frame rate.
-- Song selector reading local audio files on the PC; play songs.
+- Import local audio files (copied into the system's track data); song
+  selector; play songs.
 - While a song is selected/playing: a **3D visualization** of the display
   output, **waveforms of each stem** with sections and phrases, and the
   **detected BPM**, while the

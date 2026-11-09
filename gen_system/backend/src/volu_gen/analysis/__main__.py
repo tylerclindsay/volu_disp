@@ -1,7 +1,11 @@
-"""Analyze audio files into the per-track data dirs.
+"""Import audio files into the per-track data dirs and analyze them.
 
     uv run python -m volu_gen.analysis <audio files or folders> [--check]
-    uv run python -m volu_gen.analysis <file> --override 160 0.889
+    uv run python -m volu_gen.analysis --all [--stages peaks]
+    uv run python -m volu_gen.analysis <file or track dir> --override 160 0.889
+
+Audio files are copied into `<data>/tracks/<key>/` (re-importing the same
+file is a no-op). A track dir argument uses that stored track as is.
 """
 
 from __future__ import annotations
@@ -11,19 +15,24 @@ import sys
 from pathlib import Path
 
 from .pipeline import STAGES, analyze, set_override
-from .track import TrackDir, default_data_dir
+from .track import TRACKS_DIR, TrackDir, default_data_dir, import_track, stored_tracks
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}
 
 
-def find_tracks(inputs: list[str]) -> list[Path]:
+def find_tracks(inputs: list[str], data_dir: Path) -> list[TrackDir]:
+    """Track dirs are opened as is; audio files (or folders of them) are
+    imported."""
+    root = (data_dir / TRACKS_DIR).resolve()
     tracks = []
     for item in inputs:
         p = Path(item)
-        if p.is_dir():
-            tracks += sorted(f for f in p.rglob("*") if f.suffix.lower() in AUDIO_EXTS)
+        if p.is_dir() and p.resolve().parent == root:
+            tracks.append(TrackDir(p))
+        elif p.is_dir():
+            tracks += [import_track(f, data_dir) for f in sorted(p.rglob("*")) if f.suffix.lower() in AUDIO_EXTS]
         elif p.is_file():
-            tracks.append(p)
+            tracks.append(import_track(p, data_dir))
         else:
             sys.exit(f"not found: {item}")
     return tracks
@@ -31,7 +40,8 @@ def find_tracks(inputs: list[str]) -> list[Path]:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("inputs", nargs="+", help="audio files or folders")
+    ap.add_argument("inputs", nargs="*", help="audio files or folders to import, or track dirs")
+    ap.add_argument("--all", action="store_true", help="every stored track")
     ap.add_argument("--data", type=Path, default=default_data_dir(), help="data dir (track data goes in <data>/tracks)")
     ap.add_argument("--stages", default=",".join(STAGES), help=f"comma list from {STAGES}")
     ap.add_argument("--force", default="", help="comma list of stages to recompute even if already done")
@@ -44,7 +54,9 @@ def main():
     ap.add_argument("--clear-override", action="store_true")
     args = ap.parse_args()
 
-    tracks = [TrackDir(p, args.data) for p in find_tracks(args.inputs)]
+    if not args.inputs and not args.all:
+        ap.error("give audio files, folders or track dirs, or --all")
+    tracks = stored_tracks(args.data) if args.all else find_tracks(args.inputs, args.data)
 
     if args.override or args.clear_override:
         if len(tracks) != 1 or "tempo" not in tracks[0].data:

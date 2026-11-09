@@ -50,7 +50,11 @@ One audio device and one display, so the engine is in one mode at a time:
 ### Library
 Table of tracks: title, length, stems status, BPM, animation status
 (none / rendering / ready / stale), actions.
-- **Add files** / **Scan folder**. Adding a track starts the pipeline
+- **Add files** (upload from the browser) / **Scan folder** (type a folder
+  path; every audio file under it is imported). Import **copies** each file
+  into the track's own data directory; the original is not used afterwards
+  (`architecture.md` → Storage layout). A file that is already imported
+  shows its existing track. Adding a track starts the pipeline
   automatically (stems → analysis → render with default parameters).
 - BPM column shows `variable` for tracks without a constant grid
   (`decisions/0004-audio-analysis.md`).
@@ -133,7 +137,8 @@ Table of tracks: title, length, stems status, BPM, animation status
 - Audio output device, latency offset.
 - Network interface for the display.
 - Active display config: read-only summary + validation results.
-- Library folders.
+- Storage: disk used by track data; orphaned track directories (no library
+  entry) with sizes and a delete action.
 
 ## Deferred (not v1)
 - **Loop preview in Studio:** render only a bar-snapped loop region, re-render

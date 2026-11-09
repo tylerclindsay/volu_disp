@@ -1,19 +1,24 @@
-"""Per-track data directory: `<data>/tracks/<sha256[:16]>/` holds `stems/`,
-`analysis.json` and `peaks.npz`, keyed by audio content so renames don't
-re-analyze. This is stored track data, not a disposable cache: it holds the
-user's grid override and is costly to rebuild."""
+"""Per-track data directory: `<data>/tracks/<sha256[:16]>/` holds the source
+audio (copied in on import), `stems/`, `analysis.json` and `peaks.npz`,
+keyed by the source file's content. This is stored track data, not a
+disposable cache: it holds the user's grid override and is costly to
+rebuild."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import uuid
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 
-from .audio import BASE_SR, STEM_NAMES, file_sha256, load_audio
+from .audio import BASE_SR, STEM_NAMES, load_audio
 
 TRACKS_DIR = "tracks"  # under the data dir
+SOURCE_STEM = "source"  # the imported audio is `source<ext>`, e.g. source.flac
 SCHEMA_VERSION = 2
 # Older versions whose model outputs are still valid; only the grid-dependent
 # results (phrases, events, per-bar energy) are dropped and re-derived.
@@ -27,12 +32,51 @@ def default_data_dir() -> Path:
     return Path(__file__).resolve().parents[5] / "data"
 
 
+def import_track(path: Path, data_dir: Path) -> TrackDir:
+    """Copy an audio file into its track dir and return the track. The file is
+    read once, hashed while copying; importing the same bytes again returns
+    the existing track without writing to it."""
+    path = Path(path)
+    root = Path(data_dir) / TRACKS_DIR
+    root.mkdir(parents=True, exist_ok=True)
+    tmp = root / f".import-{uuid.uuid4().hex}.tmp"
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f, open(tmp, "wb") as out:
+            for block in iter(lambda: f.read(1 << 20), b""):
+                h.update(block)
+                out.write(block)
+        sha = h.hexdigest()
+        d = root / sha[:16]
+        d.mkdir(exist_ok=True)
+        if not any(d.glob(SOURCE_STEM + ".*")):
+            os.replace(tmp, d / (SOURCE_STEM + path.suffix.lower()))
+    finally:
+        tmp.unlink(missing_ok=True)
+    t = TrackDir(d)
+    src = t.data["source"]
+    before = dict(src)
+    src["sha256"] = sha
+    src.setdefault("original_path", str(path))
+    src.setdefault("name", path.stem)
+    if src != before or not t.json_path.exists():
+        t.save()
+    return t
+
+
+def stored_tracks(data_dir: Path) -> list[TrackDir]:
+    """Every imported track in the data dir."""
+    root = Path(data_dir) / TRACKS_DIR
+    if not root.is_dir():
+        return []
+    return [TrackDir(d) for d in sorted(root.iterdir()) if d.is_dir() and any(d.glob(SOURCE_STEM + ".*"))]
+
+
 class TrackDir:
-    def __init__(self, path: Path, data_dir: Path, sha256: str | None = None):
-        self.path = Path(path)
-        sha = sha256 or file_sha256(self.path)
-        self.dir = Path(data_dir) / TRACKS_DIR / sha[:16]
-        self.dir.mkdir(parents=True, exist_ok=True)
+    """An imported track's directory (see `import_track`)."""
+
+    def __init__(self, path: Path):
+        self.dir = Path(path)
         self.json_path = self.dir / "analysis.json"
         self.data = json.loads(self.json_path.read_text()) if self.json_path.exists() else {}
         if self.data.get("version") in COMPATIBLE_VERSIONS:
@@ -40,20 +84,29 @@ class TrackDir:
                 self.data.pop(k, None)
             self.data["version"] = SCHEMA_VERSION
         elif self.data.get("version") != SCHEMA_VERSION:
-            self.data = {"version": SCHEMA_VERSION}
-        self.data["source"] = {**self.data.get("source", {}), "sha256": sha, "path": str(self.path)}
+            self.data = {"version": SCHEMA_VERSION, "source": self.data.get("source", {})}
+        src = self.data.setdefault("source", {})
+        if "path" in src:  # from before copy-on-import, when the file was referenced in place
+            src.setdefault("original_path", src.pop("path"))
         self.data.setdefault("models", {})
         self._audio = None
 
     @property
     def name(self) -> str:
-        return self.path.stem
+        return self.data["source"].get("name", self.dir.name)
+
+    @property
+    def source_path(self) -> Path:
+        found = sorted(self.dir.glob(SOURCE_STEM + ".*"))
+        if not found:
+            raise FileNotFoundError(f"{self.dir}: no {SOURCE_STEM}.* audio (track not imported)")
+        return found[0]
 
     @property
     def audio(self) -> np.ndarray:
         """(2, n) float32 at BASE_SR, decoded once and kept."""
         if self._audio is None:
-            self._audio = load_audio(self.path)
+            self._audio = load_audio(self.source_path)
             self.data["source"]["duration"] = round(self._audio.shape[1] / BASE_SR, 3)
         return self._audio
 

@@ -19,10 +19,14 @@ Models download to the Hugging Face / torch caches on first run (~4 GB).
 ## Analyze tracks
 ```
 uv run python -m volu_gen.analysis <audio files or folders> [--check]
+uv run python -m volu_gen.analysis --all          # every stored track
 ```
-- Results are stored in `../../data/tracks/<sha256[:16]>/` (`analysis.json`,
-  `stems/` and `peaks.npz`), keyed by audio content. Finished stages are skipped;
-  `--force stems,beats` recomputes; `--stages` runs a subset.
+- Audio files are **imported**: copied to
+  `../../data/tracks/<sha256[:16]>/source.<ext>`, keyed by content
+  (re-importing the same file is a no-op). Results go next to it
+  (`analysis.json`, `stems/`, `peaks.npz`). A track dir can be passed instead
+  of an audio file. Finished stages are skipped; `--force stems,beats`
+  recomputes; `--stages` runs a subset.
 - `--check` writes `check/clicks.wav` (high click on downbeats, low on
   beats, chime on phrase starts, a second higher chime on drops) and Audacity label files (File → Import →
   Labels). Check any change to grid or phrase rules by ear with these.

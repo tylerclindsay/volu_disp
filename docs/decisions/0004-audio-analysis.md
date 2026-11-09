@@ -128,7 +128,8 @@ Outline:
 ```jsonc
 {
   "version": 2,
-  "source": { "sha256": "…", "path": "…", "duration": 184.2 },
+  "source": { "sha256": "…", "name": "…", "original_path": "…",
+              "duration": 184.2 },   // audio is source.<ext> next to this file
   "models": { "stems": "demucs htdemucs", "beats": "beat_this final0", … },
   "tempo": {                     // what generators use
     "mode": "grid",              // "grid" | "variable" (raw beats, no grid)

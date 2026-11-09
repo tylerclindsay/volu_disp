@@ -5,7 +5,7 @@ import pytest
 import soundfile as sf
 
 from volu_gen.analysis.audio import BASE_SR, STEM_NAMES
-from volu_gen.analysis.track import TrackDir
+from volu_gen.analysis.track import TrackDir, import_track
 from volu_gen.analysis.peaks import (BUCKET, LANES, N_LEVELS, SCALE, chunks_of, compute_peaks,
                                      level_rate, read_peaks, write_peaks)
 from volu_gen.analysis.pipeline import _needs_peaks, run_peaks
@@ -119,7 +119,7 @@ def test_round_trip(tmp_path):
 def make_track(tmp_path, n=BASE_SR * 2) -> TrackDir:
     src = tmp_path / "track.wav"
     sf.write(src, burst(n, 0.5, 1.0).T, BASE_SR)
-    t = TrackDir(src, tmp_path / "data")
+    t = import_track(src, tmp_path / "data")
     t._audio = sf.read(src, dtype="float32", always_2d=True)[0].T  # no ffmpeg needed
     t.data["source"]["duration"] = n / BASE_SR
     t.save_stems({name: burst(n, 0.1 * i, 0.1 * i + 0.3) for i, name in enumerate(STEM_NAMES)})

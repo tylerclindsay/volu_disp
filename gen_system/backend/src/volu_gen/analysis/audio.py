@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import gc
-import hashlib
 import subprocess
 from pathlib import Path
 
@@ -26,14 +25,6 @@ def mono(audio: np.ndarray, sr: int) -> np.ndarray:
     """Downmix (2, n) BASE_SR audio and resample to sr."""
     m = audio.mean(axis=0)
     return m if sr == BASE_SR else soxr.resample(m, BASE_SR, sr).astype(np.float32)
-
-
-def file_sha256(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
 
 
 def free_gpu():
