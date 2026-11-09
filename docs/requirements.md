@@ -27,7 +27,8 @@ Triggered from the UI when the user adds an audio file:
 3. **Animation generator** — uses the stems and analysis (in different
    parts of the animation) to create graphics synchronized to the music.
    What the animations look like is not yet decided.
-4. Output: an **animation file** of structured frame data, rendered at the
+4. Output: an **animation file** of structured frame data (format:
+   `decisions/0008-animation-file-format.md`), rendered at the
    maximum frame rate (currently 120 FPS, a single config value). Lower
    playback frame rates are derived from it at playback.
 
@@ -46,6 +47,5 @@ Triggered from the UI when the user adds an audio file:
 
 ## Open questions
 - Animation style/design.
-- Animation file format.
 - Whether live/reactive modes are in scope.
 - Audio output device.

@@ -11,7 +11,7 @@ current default until decided.
 
 Related: `requirements.md`, `ui.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
-`decisions/0007-ipc-zeromq.md`.
+`decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`.
 
 ---
 
@@ -101,8 +101,9 @@ timer resolution on Windows.
 | Thread | Does | Never does |
 |---|---|---|
 | Audio callback (PortAudio via `sounddevice`) | Copies samples from the preloaded buffer; records `(dac_time, sample_index)` per buffer; switches current → next at the exact sample (gapless) | I/O, allocation, long locks |
-| Frame | Each frame: read clock → pick frame index → packetize → PIXELS to every node → one SYNC broadcast; write the preview frame (picked with `preview_offset`) to the preview slot | IPC, file loading |
+| Frame | Each frame: read clock → pick frame index → take it from a decoded chunk → packetize → PIXELS to every node → one SYNC broadcast; write the preview frame (picked with `preview_offset`) to the preview slot | IPC, file loading |
 | Loader | Decodes audio and opens animation files into the `current` / `next` slots | Anything timed |
+| Prefetch | Keeps the playhead's animation chunk and the next one decoded (decision 0008); after a seek or `swap_anim`, decodes the new playhead's chunk first | Anything timed |
 | Control | IPC with the server; publishes status (~20 Hz) and preview (preview FPS setting, ≤ `max_fps`) from shared slots | Block the real-time threads |
 
 Real-time threads share state with the control thread only through small
@@ -401,8 +402,11 @@ above, these depend on the display geometry and the generator. The
 exists before the file does. The worker writes `<render-id>.anim.tmp` in
 the same directory and renames it when the job finishes.
 
-**What a file holds.** The container format is still open (see Open
-questions); whatever it is, it must hold:
+**What a file holds.** Format: `decisions/0008-animation-file-format.md`.
+A single file: header + JSON metadata, then frames in independently
+zstd-compressed chunks of 120 frames (1 s at 120 FPS; each chunk
+optionally temporal-delta filtered), then a chunk index and footer.
+Lossless; any frame decodes from the start of its chunk. It holds:
 
 | Part | Contents |
 |---|---|
@@ -416,12 +420,14 @@ Not in the file:
   (with unchanged pixel positions) needs no re-render. The geometry hash
   therefore covers only pixel positions and order, not `drive_nodes`.
 
-**Size** (uncompressed, 120 FPS = `P × 3 × 120` bytes/s):
+**Size** (uncompressed, 120 FPS = `P × 3 × 120` bytes/s; compressed from
+synthetic benchmarks in decision 0008, 4–50× depending on content, to be
+re-measured on real renders):
 
-| Display | Pixels | Per second | 4-min track |
-|---|---|---|---|
-| Prototype | 960 | 346 KB | ~83 MB |
-| Large build (example) | 20,000 | 7.2 MB | ~1.7 GB |
+| Display | Pixels | Per second | 4-min track | 4-min track, compressed (est.) |
+|---|---|---|---|---|
+| Prototype | 960 | 346 KB | ~83 MB | ~5–20 MB |
+| Large build (example) | 20,000 | 7.2 MB | ~1.7 GB | ~35–420 MB |
 
 **Lifecycle** (all in the DB; files only follow it):
 - **Draft:** each render writes a new file. The track's draft slot points
@@ -430,8 +436,8 @@ Not in the file:
 - **Save draft as version:** relabels the DB row as a saved version. No
   file copy.
 - **Active:** a pointer to one version; what the queue plays.
-- **Stale:** the file's geometry hash or generator version differs from the
-  current one. It still plays if the pixel count matches; the UI flags it.
+- **Stale:** the file's geometry hash, generator version, or format
+  version differs from the current one. It still plays if the pixel count matches; the UI flags it.
 - **Cleanup:** the server deletes files that no DB row references and that
   the engine doesn't have open. On startup it also removes leftover
   `*.tmp` files.
@@ -472,23 +478,19 @@ Former open questions, now part of the design above:
     twice or is skipped. Accepted; a small jitter buffer in the browser can
     fix it later if it is visible.
   - Latest-only delivery means a slow browser just shows fewer frames.
+- **Animation file format:** lossless, 1 s chunks, per-chunk temporal
+  delta + zstd, chunk index at the end; decoded by an engine prefetch
+  thread (Storage layout → `animations/`, Engine threads,
+  `decisions/0008-animation-file-format.md`). Decode costs ≤ ~1.5 % of a
+  core at 20k pixels, so engine CPU is not a constraint.
 
 ## Open questions
-1. **Animation file format** — must support fast random access by frame
-   index (seek, `swap_anim`). Size matters at scale (~1.7 GB per 4-min
-   track uncompressed at 20k pixels, 120 FPS). Direction: **lossless or
-   near-lossless compression**, likely independently compressed chunks
-   (e.g. ~1 s each, so any frame decodes from the start of its chunk) with
-   a prefetch thread in the engine; memory-mapped raw frames remain the
-   fallback. Open: codec (general-purpose like zstd/LZ4, possibly on
-   frame-to-frame deltas, vs. a near-lossless scheme), chunk length, and
-   how much engine CPU decode may take at 120 FPS. Next decision to make.
-2. **Generator interface** — inputs (positions, analysis, per-frame stem
+1. **Generator interface** — inputs (positions, analysis, per-frame stem
    features, params), and whether any time range must render independently
    (needed for the deferred loop preview). Per-frame stem features
    (envelopes, onsets) are not produced by analysis yet; proposed home:
    `tracks/<key>/features.npz`.
-3. **Audio output API** *(proposed: WASAPI shared by default, exclusive as
+2. **Audio output API** *(proposed: WASAPI shared by default, exclusive as
    a setting)*. Absolute latency barely matters here: frames are scheduled
    from the audio clock and `display_offset` absorbs whatever latency
    there is. What matters is that latency is **stable and correctly
