@@ -10,7 +10,8 @@ Open questions are collected at the end; items marked *(proposed)* are the
 current default until decided.
 
 Related: `requirements.md`, `ui.md`, `protocol.md`,
-`decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`.
+`decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
+`decisions/0007-ipc-zeromq.md`.
 
 ---
 
@@ -44,9 +45,9 @@ flowchart LR
 
     UI <-->|"HTTP: control, queries"| SRV
     SRV -->|"WebSocket: status, jobs, binary preview"| UI
-    SRV <-->|"control pipe"| ENG
-    ENG -->|"preview pipe (latest-only)"| SRV
-    SRV <-->|"job pipe"| WRK
+    SRV <-->|"ZeroMQ control"| ENG
+    ENG -->|"ZeroMQ preview (latest-only)"| SRV
+    SRV <-->|"ZeroMQ jobs"| WRK
     SRV -->|"writes"| DB
     WRK -->|"writes (tmp + atomic rename)"| DATA
     DATA -->|"reads: audio, anim files"| ENG
@@ -129,7 +130,7 @@ frame          = floor((heard_pos / sr + display_offset) × max_fps)
   - Resolution is finer than a frame (8.3 ms at 120 FPS): the offset shifts
     which frame is picked, so small nudges take effect at frame boundaries.
 - `preview_offset` is the same idea for the UI preview, which has its own
-  path (pipe → WebSocket → browser → monitor). The frame thread picks the
+  path (ZeroMQ → WebSocket → browser → monitor). The frame thread picks the
   preview frame separately at `heard_pos / sr + preview_offset`, so
   the hardware offset never makes the preview run early or late.
 - Playback FPS below `max_fps` only changes how often the frame thread
@@ -182,18 +183,37 @@ a higher-priority job starts when the current job finishes, which is at
 most one track's analysis.
 
 ## IPC
-- **Transport:** `multiprocessing.connection`. The engine and worker each
-  run a `Listener` (named pipe `AF_PIPE` on Windows, `AF_UNIX` on Linux,
-  with an authkey); the server connects as a client. Because the engine
-  listens, a restarted server can reconnect to a running engine.
-- **Messages:** dicts validated against pydantic models in one shared module
-  (`volu_gen/ipc/messages.py`). Preview frames use a separate connection so
-  bulk data never delays control messages.
+ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
+`decisions/0007-ipc-zeromq.md`.
+
+| Link | Sockets |
+|---|---|
+| Server ↔ engine control | engine binds `ROUTER`, server connects `DEALER` |
+| Engine → server preview | engine binds `PUB`, server connects `SUB` (`CONFLATE`: latest-only; the engine never blocks) |
+| Server ↔ worker jobs | worker binds `ROUTER`, server connects `DEALER` |
+
+- **The child binds, the server connects**, so a restarted server can
+  reconnect to a running engine; ZeroMQ reconnects automatically.
+- **Messages:** pydantic models in one shared module
+  (`volu_gen/ipc/messages.py`), encoded with MessagePack (no pickle).
+  Preview frames are a small fixed header + raw RGB bytes on their own
+  socket, so bulk data never delays control messages.
+- **Connection lifecycle** (ZeroMQ hides connections and would otherwise
+  queue messages for an absent peer):
+  - `ZMQ_IMMEDIATE` on the server's sockets: nothing is queued while a
+    child is down; a failed send means "peer down".
+  - `hello` handshake on every (re)connect, then the server sends the full
+    `configure` (engine) or re-submits the job (worker).
+  - Liveness: process handles for crashes, ZeroMQ heartbeats for hangs.
+- Ports are fixed, configurable defaults passed to the children at spawn.
+- The engine's control thread owns its sockets (they are not thread-safe);
+  libzmq does the I/O in its own C thread, outside the GIL.
 
 **Server → engine**
 
 | Message | Fields / meaning |
 |---|---|
+| `hello` | sent on connect; the engine replies `hello` |
 | `configure` | display config path, geometry hash, audio device, fps, display offset (ms), preview offset (ms), network interface, armed, online nodes. Full snapshot; sent on connect and on any change |
 | `load` | slot (`current`/`next`), track id, audio path, anim path, start time |
 | `swap_anim` | anim path; replace current animation at the playhead |
@@ -206,16 +226,17 @@ most one track's analysis.
 
 | Message | Fields / meaning |
 |---|---|
-| `status` (~20 Hz) | state, track id, position (s), frame, actual fps, late frames, audio xruns |
+| `hello` | reply to the server's `hello`: engine instance id, current state |
+| `status` (~20 Hz; also the heartbeat) | state, track id, position (s), frame, actual fps, late frames, audio xruns |
 | `preview` | binary RGB frame, geometry order (at the preview FPS setting, latest-only) |
 | `track_started` / `track_ended` | track id |
 | `released` | anim path no longer open (safe to delete) |
 | `error` | kind, message |
 
-**Server → worker:** `submit{job_id, kind, spec}`. Cancel = kill and
-respawn.
+**Server → worker:** `hello`, `submit{job_id, kind, spec}`. Cancel = kill
+and respawn; the new worker reconnects and says `hello`.
 
-**Worker → server:** `progress{job_id, stage, track, frac, eta}`,
+**Worker → server:** `hello`, `progress{job_id, stage, track, frac, eta}`,
 `done{job_id, result}`, `failed{job_id, error, traceback}`, `log{line}`.
 
 ## Main flows
@@ -250,7 +271,7 @@ respawn.
 | Crash | Effect |
 |---|---|
 | UI | None. |
-| Server | Playback continues: the engine plays out current + next, then idles. Worker exits on disconnect. A restarted server reconnects to the engine, re-sends `configure`, and re-queues jobs that were running. |
+| Server | Playback continues: the engine plays out current + next, then idles. Worker exits once the server has been gone past the heartbeat timeout. A restarted server reconnects to the engine, re-sends `configure`, and re-queues jobs that were running. |
 | Worker (e.g. OOM) | Job marked failed; worker respawned; queue continues. Atomic renames mean no partial files. |
 | Engine | Server respawns it, re-sends `configure`, reloads the current track **paused** at the last reported position. |
 
