@@ -1,6 +1,8 @@
 # 0008 — Animation file format
 
-Date: 2026-11-09. Status: accepted; not yet implemented (`volu_gen/animfile/`).
+Date: 2026-11-09. Status: accepted; implemented in
+`gen_system/backend/src/volu_gen/animfile/format.py` (tests:
+`tests/test_animfile.py`). Engine prefetch not yet built.
 Design context in `../architecture.md` → Storage layout → `animations/`.
 
 ## Context

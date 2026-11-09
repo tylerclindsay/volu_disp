@@ -448,7 +448,7 @@ re-measured on real renders):
 | `analysis/` | implemented (decision 0004) |
 | `geometry/` | display config → positions, geometry hash |
 | `mapping/` | pixel → node/strip/index, validation |
-| `animfile/` | animation file read/write |
+| `animfile/` | animation file read/write; implemented (decision 0008) |
 | `generators/` | generator interface + generators |
 | `output/` | packetizer, UDP sender |
 | `engine/` | engine process (threads, clock, sources, slots) |

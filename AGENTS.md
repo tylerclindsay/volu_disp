@@ -111,3 +111,7 @@ receives data for its own strips.
   this file when facts above change.
 - Open hardware questions: final physical wiring order of strips within a
   drive node; how multi-node sync tolerance will be measured.
+
+---
+
+If a bug is worth documenting, it's worth fixing!
