@@ -121,7 +121,8 @@ tracks: stems 4.4–10.5 s/track, peak ≤ 6.3 GB on every track.)
   the grid should have stayed continuous.
 
 ## analysis.json (backend `analysis/` output)
-One file per track in the analysis cache, keyed by audio hash. Waveform
+One file per track in its data dir (`<data>/tracks/<sha256[:16]>/`), keyed
+by audio hash. Waveform
 peaks are not in it; they are `peaks.npz` next to it (`0006-waveform-peaks.md`).
 Outline:
 ```jsonc

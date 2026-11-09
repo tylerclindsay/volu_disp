@@ -1,5 +1,5 @@
 """Analysis pipeline (decision 0004): stems → beats/grid → sections → genre
-→ mood → phrases, results cached per track as analysis.json; then waveform
+→ mood → phrases, results stored per track as analysis.json; then waveform
 peaks (decision 0006) as peaks.npz.
 
 Runs one stage at a time across all tracks (load model, process every
@@ -18,7 +18,7 @@ import numpy as np
 
 from . import grid as grid_mod
 from .audio import STEM_NAMES, free_gpu
-from .cache import TrackCache
+from .track import TRACKS_DIR, TrackDir
 from .mood import library_z
 from .peaks import BLOCK, LANES, PEAKS_VERSION, chunks_of, compute_peaks, peaks_version, write_peaks
 from .phrases import bar_energy, compute_phrases
@@ -27,7 +27,7 @@ STAGES = ["stems", "beats", "sections", "genre", "mood", "phrases", "peaks"]
 CPU_STAGES = {"phrases", "peaks"}  # no model; run after the model stages
 
 
-def _needs(t: TrackCache, stage: str, force: set[str]) -> bool:
+def _needs(t: TrackDir, stage: str, force: set[str]) -> bool:
     from .models import MODEL_IDS
     if stage in force:
         return True
@@ -37,7 +37,7 @@ def _needs(t: TrackCache, stage: str, force: set[str]) -> bool:
     return key not in t.data or t.data["models"].get(stage) != MODEL_IDS[stage]
 
 
-def analyze(tracks: list[TrackCache], stages: list[str] = STAGES, force: set[str] = frozenset(),
+def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] = frozenset(),
             device: str = "cuda", log=print) -> dict:
     """Run `stages` on `tracks`. Returns per-track, per-stage timing."""
     from .models import MODEL_IDS, STAGE_MODELS
@@ -86,11 +86,11 @@ def analyze(tracks: list[TrackCache], stages: list[str] = STAGES, force: set[str
     return stats
 
 
-def _needs_phrases(t: TrackCache, force) -> bool:
+def _needs_phrases(t: TrackDir, force) -> bool:
     return "phrases" in force or "phrases" not in t.data
 
 
-def _needs_peaks(t: TrackCache, force) -> bool:
+def _needs_peaks(t: TrackDir, force) -> bool:
     """Missing, another format version, or older than any stem file."""
     p = t.peaks_path
     if "peaks" in force or peaks_version(p) != PEAKS_VERSION:
@@ -98,7 +98,7 @@ def _needs_peaks(t: TrackCache, force) -> bool:
     return t.has_stems() and any(t.stem_path(n).stat().st_mtime > p.stat().st_mtime for n in STEM_NAMES)
 
 
-def _run_stage(stage: str, model, t: TrackCache):
+def _run_stage(stage: str, model, t: TrackDir):
     if stage == "stems":
         t.save_stems(model(t.audio))
     elif stage == "beats":
@@ -113,7 +113,7 @@ def _run_stage(stage: str, model, t: TrackCache):
         t.data[stage] = model(t.audio)
 
 
-def run_phrases(t: TrackCache):
+def run_phrases(t: TrackDir):
     """Re-derive everything that depends on the beat grid (CPU only)."""
     downbeats = np.array(t.data["tempo"]["downbeats"])
     energy = bar_energy(t.audio, {n: t.stem(n) for n in STEM_NAMES}, downbeats, t.duration)
@@ -121,14 +121,14 @@ def run_phrases(t: TrackCache):
     t.data.update(compute_phrases(energy, downbeats, t.duration, sections))
 
 
-def run_peaks(t: TrackCache):
+def run_peaks(t: TrackDir):
     """Waveform peaks of the mix and each stem (CPU only); stems are streamed."""
     mix = t.audio
     lanes = {"mix": chunks_of(mix), **{n: t.stem_blocks(n, BLOCK) for n in LANES if n != "mix"}}
     write_peaks(t.peaks_path, compute_peaks(lanes, mix.shape[1]))
 
 
-def set_override(t: TrackCache, bpm: float | None, offset: float | None):
+def set_override(t: TrackDir, bpm: float | None, offset: float | None):
     """Replace the fitted grid with a user one (BPM + time of a downbeat), or
     clear it with bpm=None. Re-runs only the grid-dependent steps."""
     tempo = t.data["tempo"]
@@ -141,9 +141,9 @@ def set_override(t: TrackCache, bpm: float | None, offset: float | None):
 
 
 def library_moods(data_dir: Path) -> dict[str, dict[str, float]]:
-    """Mood z-scores for every analyzed track in the cache, keyed by sha256."""
+    """Mood z-scores for every analyzed track in the data dir, keyed by sha256."""
     cos = {}
-    for p in (Path(data_dir) / "cache").glob("*/analysis.json"):
+    for p in (Path(data_dir) / TRACKS_DIR).glob("*/analysis.json"):
         d = json.loads(p.read_text())
         if "mood" in d:
             cos[d["source"]["sha256"]] = d["mood"]["cos"]
@@ -153,7 +153,7 @@ def library_moods(data_dir: Path) -> dict[str, dict[str, float]]:
 class _timed:
     """Times one stage on one track; records peak VRAM and errors."""
 
-    def __init__(self, stats: dict, t: TrackCache, stage: str, log=print):
+    def __init__(self, stats: dict, t: TrackDir, stage: str, log=print):
         self.stats, self.t, self.stage, self.log = stats, t, stage, log
 
     def __enter__(self):

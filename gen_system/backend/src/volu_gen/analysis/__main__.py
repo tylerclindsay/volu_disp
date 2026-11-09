@@ -1,4 +1,4 @@
-"""Analyze audio files into the cache.
+"""Analyze audio files into the per-track data dirs.
 
     uv run python -m volu_gen.analysis <audio files or folders> [--check]
     uv run python -m volu_gen.analysis <file> --override 160 0.889
@@ -10,8 +10,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from .cache import TrackCache, default_data_dir
 from .pipeline import STAGES, analyze, set_override
+from .track import TrackDir, default_data_dir
 
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}
 
@@ -32,9 +32,9 @@ def find_tracks(inputs: list[str]) -> list[Path]:
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("inputs", nargs="+", help="audio files or folders")
-    ap.add_argument("--data", type=Path, default=default_data_dir(), help="data dir (cache goes in <data>/cache)")
+    ap.add_argument("--data", type=Path, default=default_data_dir(), help="data dir (track data goes in <data>/tracks)")
     ap.add_argument("--stages", default=",".join(STAGES), help=f"comma list from {STAGES}")
-    ap.add_argument("--force", default="", help="comma list of stages to recompute even if cached")
+    ap.add_argument("--force", default="", help="comma list of stages to recompute even if already done")
     ap.add_argument("--device", default=None)
     ap.add_argument("--vram-limit-gb", type=float, default=0.0,
                     help="cap this process's VRAM, e.g. 8 to emulate the target card (0 = no cap)")
@@ -44,7 +44,7 @@ def main():
     ap.add_argument("--clear-override", action="store_true")
     args = ap.parse_args()
 
-    tracks = [TrackCache(p, args.data) for p in find_tracks(args.inputs)]
+    tracks = [TrackDir(p, args.data) for p in find_tracks(args.inputs)]
 
     if args.override or args.clear_override:
         if len(tracks) != 1 or "tempo" not in tracks[0].data:

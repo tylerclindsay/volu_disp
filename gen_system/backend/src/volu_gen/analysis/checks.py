@@ -1,5 +1,5 @@
 """Listening aids for checking analysis by ear: a click track and Audacity
-label files, written to `<track cache>/check/`."""
+label files, written to `<track dir>/check/`."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import soundfile as sf
 
 from .audio import BASE_SR
-from .cache import TrackCache
+from .track import TrackDir
 
 
 def write_labels(path: Path, rows: list[tuple[float, float, str]]):
@@ -17,7 +17,7 @@ def write_labels(path: Path, rows: list[tuple[float, float, str]]):
     path.write_text("".join(f"{s:.3f}\t{e:.3f}\t{l}\n" for s, e, l in rows))
 
 
-def write_checks(t: TrackCache):
+def write_checks(t: TrackDir):
     d = t.data
     out_dir = t.dir / "check"
     out_dir.mkdir(exist_ok=True)

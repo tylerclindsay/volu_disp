@@ -20,14 +20,14 @@ Models download to the Hugging Face / torch caches on first run (~4 GB).
 ```
 uv run python -m volu_gen.analysis <audio files or folders> [--check]
 ```
-- Results are cached in `../../data/cache/<sha256[:16]>/` (`analysis.json`,
+- Results are stored in `../../data/tracks/<sha256[:16]>/` (`analysis.json`,
   `stems/` and `peaks.npz`), keyed by audio content. Finished stages are skipped;
   `--force stems,beats` recomputes; `--stages` runs a subset.
 - `--check` writes `check/clicks.wav` (high click on downbeats, low on
   beats, chime on phrase starts, a second higher chime on drops) and Audacity label files (File → Import →
   Labels). Check any change to grid or phrase rules by ear with these.
 - `--vram-limit-gb 8` emulates the 8 GB target card.
-- `--stages peaks` (re)builds only the waveform peaks from cached stems
+- `--stages peaks` (re)builds only the waveform peaks from stored stems
   (CPU, ~1–3 s/track); they are redone automatically when stems are newer.
 - `--override BPM DOWNBEAT_S` sets a user grid on one analyzed track (time
   of any downbeat); `--clear-override` returns to the fit. Only the

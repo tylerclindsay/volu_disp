@@ -1,6 +1,6 @@
 """Waveform peaks for the UI's stem lanes (decision 0006): per bucket min /
 max / rms of the mix and each stem, on one linear int16 scale, in a pyramid
-of levels that halve the rate. Stored as peaks.npz in the track's cache dir.
+of levels that halve the rate. Stored as peaks.npz in the track's data dir.
 """
 
 from __future__ import annotations

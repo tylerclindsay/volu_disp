@@ -10,17 +10,20 @@ Read first:
 - `../docs/protocol.md` — UDP wire protocol to the drive nodes.
 - `../config/displays/` — display configs.
 
-> **Status: pre-architecture.** Treat "Recommended approach" below as
-> guidance, not decisions. Once `../docs/architecture.md` is written, it
-> overrides this file — update this file to match. Do not scaffold large
-> structures or pick frameworks beyond what a task needs until then.
+> **Status: architecture in draft.** `../docs/architecture.md` is the
+> working architecture (process model, IPC, flows, package layout) and
+> overrides "Recommended approach" below wherever they differ. It is still
+> being refined — check its open questions before building on an
+> undecided part, and update it when the design moves.
 
 ## Layout
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
-  README): `analysis/` (implemented), then `geometry/`, `generators/`,
-  `animfile/`, `output/`, `playback/`, `server/`, plus `tests/`.
+  README): `analysis/` (implemented), then `geometry/`, `mapping/`,
+  `animfile/`, `generators/`, `output/`, `engine/`, `worker/`, `server/`,
+  `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
-- Runtime data (audio, stems cache, animation files) goes in `../data/`.
+- Runtime data (audio, per-track data dirs with stems, analysis and
+  animation files) goes in `../data/` (`../docs/architecture.md` → storage).
 
 ---
 
@@ -28,7 +31,7 @@ Read first:
 
 ### 1. Separate offline generation from real-time playback
 - **Generation** (audio → stems → analysis → animation) is offline/batch: it
-  can be slow (demucs especially), and be re-run. Cache stems and analysis
+  can be slow (demucs especially), and be re-run. Store stems and analysis
   per track (keyed by audio hash) so re-generating animations doesn't re-run
   demucs.
   Output is a deterministic, pre-rendered **animation file**: audio

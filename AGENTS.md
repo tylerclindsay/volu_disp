@@ -18,7 +18,7 @@ firmware/drive_node/ drive node firmware (PlatformIO, Arduino, FastLED)
 pcb/                 KiCad projects (see Hardware)
 gen_system/          host software: backend/ (Python), ui/ (React)
 tools/               standalone test/dev tools (e.g. udp_rainbow_sender.py)
-data/                gitignored: audio library, stem/analysis cache, animations
+data/                gitignored: audio library, per-track data (stems, analysis, animations)
 ```
 
 ## Terminology

@@ -1,6 +1,7 @@
-"""Per-track analysis cache: `<data>/cache/<sha256[:16]>/` holds `stems/`,
+"""Per-track data directory: `<data>/tracks/<sha256[:16]>/` holds `stems/`,
 `analysis.json` and `peaks.npz`, keyed by audio content so renames don't
-re-analyze."""
+re-analyze. This is stored track data, not a disposable cache: it holds the
+user's grid override and is costly to rebuild."""
 
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ import soundfile as sf
 
 from .audio import BASE_SR, STEM_NAMES, file_sha256, load_audio
 
+TRACKS_DIR = "tracks"  # under the data dir
 SCHEMA_VERSION = 2
 # Older versions whose model outputs are still valid; only the grid-dependent
 # results (phrases, events, per-bar energy) are dropped and re-derived.
@@ -21,15 +23,15 @@ DERIVED_KEYS = ["phrases", "events", "bars"]
 
 
 def default_data_dir() -> Path:
-    # backend/src/volu_gen/analysis/cache.py → repo root
+    # backend/src/volu_gen/analysis/track.py → repo root
     return Path(__file__).resolve().parents[5] / "data"
 
 
-class TrackCache:
+class TrackDir:
     def __init__(self, path: Path, data_dir: Path, sha256: str | None = None):
         self.path = Path(path)
         sha = sha256 or file_sha256(self.path)
-        self.dir = Path(data_dir) / "cache" / sha[:16]
+        self.dir = Path(data_dir) / TRACKS_DIR / sha[:16]
         self.dir.mkdir(parents=True, exist_ok=True)
         self.json_path = self.dir / "analysis.json"
         self.data = json.loads(self.json_path.read_text()) if self.json_path.exists() else {}

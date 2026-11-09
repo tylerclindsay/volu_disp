@@ -7,7 +7,7 @@ Date: 2026-11-07. Status: accepted; implemented in
 The Player and Studio draw the mix and the four stems as lanes on a custom
 canvas (`../ui.md`, `0003-ui-design.md`) from peaks the backend computes.
 The Player shows a whole track; Studio zooms in to the beat grid. Lanes must
-share one scale so stems can be compared. Peaks come from cached audio only:
+share one scale so stems can be compared. Peaks come from stored audio only:
 no model runs, and demucs never re-runs for them.
 
 ## Decision
@@ -41,7 +41,7 @@ Level 0: 118,800 buckets × 5 lanes × 3 values × 2 B ≈ 3.6 MB; all levels
 ≈ 7.1 MB raw, stored compressed (real sizes in Results).
 
 ### Storage
-- `<data>/cache/<sha256[:16]>/peaks.npz` (`np.savez_compressed`), next to
+- `<data>/tracks/<sha256[:16]>/peaks.npz` (`np.savez_compressed`), next to
   `analysis.json` and `stems/`. Not in analysis.json, which stays small and
   **unchanged** (its `version` is not bumped).
 - Arrays: `level0` … `level8`, each int16 shaped `(lanes, 3, n_k)` with
@@ -69,13 +69,13 @@ Level 0: 118,800 buckets × 5 lanes × 3 values × 2 B ≈ 3.6 MB; all levels
 - Re-runs when: forced (`--force peaks`); `peaks.npz` is missing or has
   another `version`; or any stem file is newer than `peaks.npz` (catches
   stems re-run in an earlier invocation that skipped `peaks`). The mix needs
-  no check: the cache dir is keyed by its content hash.
-- Tracks without cached stems are skipped with a log line.
+  no check: the track dir is keyed by its content hash.
+- Tracks without stored stems are skipped with a log line.
 - Memory: stems are streamed from FLAC in blocks (a multiple of 147
-  samples); the mix uses the decoded `TrackCache.audio`, dropped after.
+  samples); the mix uses the decoded `TrackDir.audio`, dropped after.
 
 ## Results (10 test tracks, 2026-11-07)
-`--stages peaks` on cached stems, dev PC. Time includes the ffmpeg decode of
+`--stages peaks` on stored stems, dev PC. Time includes the ffmpeg decode of
 the mix (most of it); no GPU used.
 
 | Track | Length | Time | peaks.npz |
