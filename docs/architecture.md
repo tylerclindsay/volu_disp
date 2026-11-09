@@ -100,9 +100,9 @@ timer resolution on Windows.
 | Thread | Does | Never does |
 |---|---|---|
 | Audio callback (PortAudio via `sounddevice`) | Copies samples from the preloaded buffer; records `(dac_time, sample_index)` per buffer; switches current → next at the exact sample (gapless) | I/O, allocation, long locks |
-| Frame | Each frame: read clock → pick frame index → packetize → PIXELS to every node → one SYNC broadcast; write the frame to the preview slot | IPC, file loading |
+| Frame | Each frame: read clock → pick frame index → packetize → PIXELS to every node → one SYNC broadcast; write the preview frame (picked with `preview_offset`) to the preview slot | IPC, file loading |
 | Loader | Decodes audio and opens animation files into the `current` / `next` slots | Anything timed |
-| Control | IPC with the server; publishes status (~20 Hz) and preview (≤ 30 FPS) from shared slots | Block the real-time threads |
+| Control | IPC with the server; publishes status (~20 Hz) and preview (preview FPS setting, ≤ `max_fps`) from shared slots | Block the real-time threads |
 
 Real-time threads share state with the control thread only through small
 lock-guarded slots or atomic reference swaps.
@@ -115,8 +115,23 @@ heard_pos(now) = sample_index + (now − dac_time) × sr      # sample at the sp
 frame          = floor((heard_pos / sr + display_offset) × max_fps)
 ```
 
-- `display_offset` is the calibrated latency setting (send early to cover
-  network + latch time).
+- `display_offset` is the **A/V sync offset**, a user setting in ms
+  (positive = lights earlier). It covers audio output latency, network and
+  latch time, and anything else that misaligns sound and light. Set by the
+  calibration flash + click, and adjustable by hand from the UI at any time
+  (`ui.md` → Sync).
+  - **Applied live:** a change goes out in `configure` and takes effect at
+    the next frame, with no reload or playback interruption. The jump is at
+    most the change itself; nudges are small.
+  - **Stored per audio device + output mode** (e.g. WASAPI shared vs.
+    exclusive), since their latency differs; switching device switches
+    offset.
+  - Resolution is finer than a frame (8.3 ms at 120 FPS): the offset shifts
+    which frame is picked, so small nudges take effect at frame boundaries.
+- `preview_offset` is the same idea for the UI preview, which has its own
+  path (pipe → WebSocket → browser → monitor). The frame thread picks the
+  preview frame separately at `heard_pos / sr + preview_offset`, so
+  the hardware offset never makes the preview run early or late.
 - Playback FPS below `max_fps` only changes how often the frame thread
   wakes; it picks the nearest frame from the `max_fps` file.
 - The protocol sender's frame counter is separate from the frame index and
@@ -149,16 +164,22 @@ the animation in `current` at the next frame, keeping audio and playhead.
 
 | Job | Spec | Result |
 |---|---|---|
-| `analyze` | tracks, stages, force set | per track: sha, BPM/grid summary, status |
+| `analyze` | one track, stages, force set | sha, BPM/grid summary, status |
 | `regrid` | sha, BPM / grid-offset override | updated phrases, events, bars (CPU, seconds) |
 | `render` | sha, generator id + params, fps, geometry hash, output path | anim path, frame count, generator version |
 
-**Priority** *(proposed)*: Studio render > render for a queued track >
-analysis. `analyze` keeps the stage-at-a-time batching of
-`analysis.pipeline.analyze`; to let a render jump ahead, the server sends
-`yield`, the worker finishes the current track's current stage and replies
-`yielded {remaining}`, and the server re-queues the remainder behind the
-render.
+**Tracks are processed in series.** A multi-file upload or folder scan
+queues one `analyze` job per track, and each track gets its default
+`render` before the next track's `analyze` starts, so the first tracks
+become playable while the rest wait. There is no second worker and no
+parallel processing. Cost: each track loads and unloads every model itself
+instead of sharing one load across a batch (seconds per stage, small next
+to demucs).
+
+**Priority:** Studio render > render for a queued track > import work
+(`analyze` + its default render, FIFO). Jobs are never preempted mid-run:
+a higher-priority job starts when the current job finishes, which is at
+most one track's analysis.
 
 ## IPC
 - **Transport:** `multiprocessing.connection`. The engine and worker each
@@ -173,7 +194,7 @@ render.
 
 | Message | Fields / meaning |
 |---|---|
-| `configure` | display config path, geometry hash, audio device, fps, display offset (ms), network interface, armed, online nodes. Full snapshot; sent on connect and on any change |
+| `configure` | display config path, geometry hash, audio device, fps, display offset (ms), preview offset (ms), network interface, armed, online nodes. Full snapshot; sent on connect and on any change |
 | `load` | slot (`current`/`next`), track id, audio path, anim path, start time |
 | `swap_anim` | anim path; replace current animation at the playhead |
 | `play` / `pause` / `stop` / `seek{t}` | transport |
@@ -186,17 +207,16 @@ render.
 | Message | Fields / meaning |
 |---|---|
 | `status` (~20 Hz) | state, track id, position (s), frame, actual fps, late frames, audio xruns |
-| `preview` | binary RGB frame, geometry order (≤ 30 FPS, latest-only) |
+| `preview` | binary RGB frame, geometry order (at the preview FPS setting, latest-only) |
 | `track_started` / `track_ended` | track id |
 | `released` | anim path no longer open (safe to delete) |
 | `error` | kind, message |
 
-**Server → worker:** `submit{job_id, kind, spec}`, `yield`. Cancel = kill
-and respawn.
+**Server → worker:** `submit{job_id, kind, spec}`. Cancel = kill and
+respawn.
 
 **Worker → server:** `progress{job_id, stage, track, frac, eta}`,
-`done{job_id, result}`, `yielded{job_id, remaining}`,
-`failed{job_id, error, traceback}`, `log{line}`.
+`done{job_id, result}`, `failed{job_id, error, traceback}`, `log{line}`.
 
 ## Main flows
 1. **Add track.** `POST /tracks` (file upload) or `POST /tracks/scan`
@@ -204,11 +224,17 @@ and respawn.
    already-imported file just returns its track) → inserts the row, queues
    `analyze` → worker `progress` → UI jobs drawer → `done` → server updates the track
    and queues a default `render` → `done` → server records the draft and
-   sets it active.
+   sets it active → the next imported track's `analyze` starts (see
+   Worker: tracks are processed in series).
 2. **Play the queue.** Server resolves each track's active version →
    `load(current)`, `load(next)`, `play` → at the end of the track the
    engine switches to `next` at the sample and emits `track_ended` /
    `track_started` → server pops the queue and sends the new `load(next)`.
+   **Unrendered tracks are skipped**, never waited for: `next` is the first
+   queued track that has an active version. Skipped tracks keep their place
+   at the front of the queue and keep rendering; if one becomes ready
+   before the current track ends, the server replaces `next` with it
+   (`clear_next` + `load(next)`).
 3. **Studio re-render.** `render` (top priority) writes
    `tracks/<key>/animations/<render-id>.anim` → server sends `swap_anim` → engine
    switches at the next frame and reports `released{old}` → server deletes
@@ -224,7 +250,7 @@ and respawn.
 | Crash | Effect |
 |---|---|
 | UI | None. |
-| Server | Engine plays out current + next, then idles. Worker exits on disconnect. A restarted server reconnects to the engine, re-sends `configure`, and re-queues jobs that were running. |
+| Server | Playback continues: the engine plays out current + next, then idles. Worker exits on disconnect. A restarted server reconnects to the engine, re-sends `configure`, and re-queues jobs that were running. |
 | Worker (e.g. OOM) | Job marked failed; worker respawned; queue continues. Atomic renames mean no partial files. |
 | Engine | Server respawns it, re-sends `configure`, reloads the current track **paused** at the last reported position. |
 
@@ -354,8 +380,8 @@ above, these depend on the display geometry and the generator. The
 exists before the file does. The worker writes `<render-id>.anim.tmp` in
 the same directory and renames it when the job finishes.
 
-**What a file holds.** The container format is still open (open question
-4); whatever it is, it must hold:
+**What a file holds.** The container format is still open (see Open
+questions); whatever it is, it must hold:
 
 | Part | Contents |
 |---|---|
@@ -403,24 +429,52 @@ Not in the file:
 | `server/` | API server (FastAPI, DB, queues, supervision) |
 | `ipc/` | message models, connection helpers |
 
+## Settled
+Former open questions, now part of the design above:
+- **Playback across a server restart:** yes. The engine keeps playing
+  (Failure handling); a restarted server reconnects through its `Listener`.
+- **Imports are processed in series**, one track at a time through analysis
+  and its default render; no second worker, no parallelization (Worker).
+- **Unrendered queued tracks are skipped**, not waited for (Main flows 2).
+- **Preview rate: target 120 FPS**, the display's own rate. The preview
+  FPS setting (≤ `max_fps`) is set by the user to the UI monitor's refresh
+  rate; frames beyond it would never be drawn. Cost at 120 FPS:
+  - Data: prototype 2.9 KB/frame ≈ 350 KB/s; 20k pixels 60 KB/frame
+    ≈ 7.2 MB/s. Trivial on localhost; ~58 Mbit/s to a browser on another
+    machine (fine wired, marginal on Wi-Fi).
+  - Browser: one 60 KB color-buffer upload per frame; bloom is the
+    heaviest part and wants a discrete GPU at 20k pixels.
+  - Engine: preview sends share the GIL with the frame thread. **Measure**
+    frame timing with the preview on vs. off once the engine exists; lower
+    the setting if it adds jitter.
+  - Frames arrive unsynchronized with vsync, so an occasional frame shows
+    twice or is skipped. Accepted; a small jitter buffer in the browser can
+    fix it later if it is visible.
+  - Latest-only delivery means a slow browser just shows fewer frames.
+
 ## Open questions
-1. **Playback across a server restart** *(proposed: yes)* — the engine's
-   `Listener` makes it nearly free. Alternative: the server is a plain
-   parent and everything stops together.
-2. **Renders during a large import** *(proposed: `yield` between tracks)* —
-   alternative is a second render-only worker, which competes for VRAM.
-3. **Queued track not yet rendered when reached** — skip (no gaps) or wait
-   (simpler to understand). Carried over from `ui.md`.
-4. **Animation file format** — must support fast random access by frame
-   index (seek, `swap_anim`). Candidates: memory-mapped raw frames, or
-   independently compressed chunks with a prefetch thread in the engine.
-   Size matters at scale (~1.7 GB per 4-min track uncompressed at 20k
-   pixels, 120 FPS). Next decision to make.
-5. **Generator interface** — inputs (positions, analysis, per-frame stem
+1. **Animation file format** — must support fast random access by frame
+   index (seek, `swap_anim`). Size matters at scale (~1.7 GB per 4-min
+   track uncompressed at 20k pixels, 120 FPS). Direction: **lossless or
+   near-lossless compression**, likely independently compressed chunks
+   (e.g. ~1 s each, so any frame decodes from the start of its chunk) with
+   a prefetch thread in the engine; memory-mapped raw frames remain the
+   fallback. Open: codec (general-purpose like zstd/LZ4, possibly on
+   frame-to-frame deltas, vs. a near-lossless scheme), chunk length, and
+   how much engine CPU decode may take at 120 FPS. Next decision to make.
+2. **Generator interface** — inputs (positions, analysis, per-frame stem
    features, params), and whether any time range must render independently
    (needed for the deferred loop preview). Per-frame stem features
    (envelopes, onsets) are not produced by analysis yet; proposed home:
    `tracks/<key>/features.npz`.
-6. **Preview rate to the UI** *(proposed: ≤ 30 FPS)*.
-7. **Audio output API** — WASAPI shared vs. exclusive on Windows; affects
-   latency and the calibration range.
+3. **Audio output API** *(proposed: WASAPI shared by default, exclusive as
+   a setting)*. Absolute latency barely matters here: frames are scheduled
+   from the audio clock and `display_offset` absorbs whatever latency
+   there is. What matters is that latency is **stable and correctly
+   reported** (`stream.time` vs. DAC timestamps). Shared mode coexists with
+   other apps and won't fail when the device is busy; the Windows mixer
+   runs at its own sample rate, so the engine resamples to the device rate
+   (or uses `WasapiSettings(auto_convert=True)`). Exclusive mode gives lower,
+   tighter latency but locks the device. Store calibration per (device,
+   mode), since the offset differs. Verify with the calibration flash +
+   click before committing.

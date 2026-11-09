@@ -29,6 +29,22 @@ Persistent bottom bar on every page:
 - Status: engine connected, each drive node online/offline, output
   virtual/armed.
 - Jobs indicator → drawer with stem separation / analysis / render progress.
+- **Sync** button → popover to fix audio/light alignment while listening
+  (below).
+
+## Sync
+The A/V sync offset (`architecture.md` → Engine → Clock) is easy to reach
+and changes take effect immediately, during playback, with no reload.
+- Popover from the bottom bar, available on every page:
+  - **Display offset** (ms, positive = lights earlier): slider plus
+    −5 / −1 / +1 / +5 ms nudge buttons and a typed value; reset to the last
+    calibrated value.
+  - **Preview offset** (ms): the same controls for the 3D preview.
+  - Shows which audio device + mode the values belong to.
+- Keyboard nudges for the display offset (e.g. `[` / `]` = ±1 ms, with
+  Shift ±5 ms), so it can be tuned by ear without looking.
+- Values are saved per audio device + output mode. The same setting is
+  shown in Settings and written by the calibration on the Display page.
 
 ## Engine modes
 One audio device and one display, so the engine is in one mode at a time:
@@ -79,7 +95,8 @@ Table of tracks: title, length, stems status, BPM, animation status
   play end to end; when one ends the next starts immediately (no fades).
 - A queued track plays its **active** version. A track without one is
   rendered first; its entry shows progress, and it is skipped if it isn't
-  ready when reached (or: playback waits — decide when implementing).
+  ready when reached: it stays at the front of the queue and plays once
+  ready (`architecture.md`, Main flows).
 - 3D preview: orbit, view presets (front/side/top/iso), slice-isolate
   slider, pixel size and bloom controls.
 
@@ -129,12 +146,14 @@ Table of tracks: title, length, stems status, BPM, animation status
   → `node · strip · pixel · (x, y, z)`.
 - Node cards: id, IP, online, last packet sent; telemetry once type 3 exists.
 - Test patterns: solid color, node ID, strip ID, x/y/z sweeps, blink strip N.
-- Latency calibration: flash + click loop with an ms offset slider.
+- Latency calibration: flash + click loop with an ms offset slider; sets the
+  display offset (see Sync).
 
 ### Settings
 - Playback FPS (validated against the longest strip: warn above ~270 pixels
   per strip at 120 FPS).
-- Audio output device, latency offset.
+- Audio output device and mode; display and preview offsets (same values as
+  the Sync popover).
 - Network interface for the display.
 - Active display config: read-only summary + validation results.
 - Storage: disk used by track data; orphaned track directories (no library
