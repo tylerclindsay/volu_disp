@@ -12,7 +12,8 @@ Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
 `decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`,
 `decisions/0009-audio-output-api.md`, `decisions/0010-display-fps.md`,
-`decisions/0011-planning-in-server.md`, `decisions/0012-stem-features.md`.
+`decisions/0011-planning-in-server.md`, `decisions/0012-stem-features.md`,
+`decisions/0016-drum-onsets-adtof.md`.
 
 ---
 
@@ -502,8 +503,8 @@ size and can delete them.
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
-| `features.npz` *(not yet built)* | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / hat from the drums stem; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~11 MB raw for a 6.6-min track (est.) |
-| `check/` | Listening aids: `clicks.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
+| `features.npz` | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / tom / hat / cymbal from the drums stem via ADTOF, decision 0016; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~8 MB for a 6.6-min track |
+| `check/` | Listening aids: `clicks.wav`, `onsets_<class>.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
 - The decoded mix is **not** stored: `source.<ext>` is decoded whenever
   needed (analysis, peaks, features, render jobs, engine playback).
@@ -518,9 +519,9 @@ size and can delete them.
     re-ran or the override changed.
   - An `analysis.json` of an older compatible `version` keeps model outputs
     and drops only the derived keys; any other version is rebuilt.
-  - `peaks.npz` is recomputed when its `version` differs or any stem file is
-    newer than it. `features.npz` will follow the same rule (decision
-    0012); neither re-runs on a grid override or an FPS change.
+  - `peaks.npz` and `features.npz` are recomputed when their `version`
+    differs or any stem file is newer than them (decisions 0006, 0012);
+    neither re-runs on a grid override or an FPS change.
 
 **`animations/` — rendered animations.**
 One file per render: `animations/<render-id>.anim`. Unlike the files
@@ -682,7 +683,8 @@ Former open questions, now part of the design above:
   orphaned ones (Storage layout → `data/tracks/<key>/`).
 - **Stem features** (`features.npz`, `decisions/0012-stem-features.md`):
   a CPU analysis stage after `peaks`, at fixed rates independent of the
-  display FPS and the grid.
+  display FPS and the grid. Drum onsets come from the ADTOF drum
+  transcription model on the drums stem (`decisions/0016-drum-onsets-adtof.md`).
 
 ## Open questions
 1. **Generator interface** — design in progress in `generators.md`: a

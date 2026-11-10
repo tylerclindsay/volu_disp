@@ -48,7 +48,8 @@ def main():
     ap.add_argument("--device", default=None)
     ap.add_argument("--vram-limit-gb", type=float, default=0.0,
                     help="cap this process's VRAM, e.g. 8 to emulate the target card (0 = no cap)")
-    ap.add_argument("--check", action="store_true", help="write click track + Audacity labels per track")
+    ap.add_argument("--check", action="store_true",
+                    help="write click tracks + Audacity labels per track (grid, phrases, onsets)")
     ap.add_argument("--override", nargs=2, type=float, metavar=("BPM", "DOWNBEAT_S"),
                     help="set a user grid (BPM + time of a downbeat) on one analyzed track")
     ap.add_argument("--clear-override", action="store_true")
@@ -78,11 +79,13 @@ def main():
                 for k, v in st.items()))
 
     if args.check:
-        from .checks import write_checks
+        from .checks import write_checks, write_onset_checks
         for t in tracks:
             if "tempo" in t.data:
                 write_checks(t)
                 t.drop_audio()
+            if t.features_path.exists():
+                write_onset_checks(t)
     for t in tracks:
         tempo = t.data.get("tempo", {})
         print(f"{t.name}: {tempo.get('mode')} {tempo.get('bpm')} BPM, "

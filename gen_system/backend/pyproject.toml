@@ -28,6 +28,9 @@ dependencies = [
     "librosa",
     "zstandard>=0.25.0",
     "pyyaml>=6.0.3",
+    # Drum onsets (docs/decisions/0016-drum-onsets-adtof.md). Models are
+    # CC BY-NC-SA 4.0: non-commercial use only.
+    "adtof-pytorch",
 ]
 
 [dependency-groups]
@@ -50,6 +53,7 @@ environments = [
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 torchaudio = { index = "pytorch-cu128" }
+adtof-pytorch = { git = "https://github.com/xavriley/ADTOF-pytorch", rev = "85c192e78f716ea0b111cc8a5ee4a8f6a3a4f8a9" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

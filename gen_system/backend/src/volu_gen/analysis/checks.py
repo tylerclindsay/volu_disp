@@ -1,4 +1,4 @@
-"""Listening aids for checking analysis by ear: a click track and Audacity
+"""Listening aids for checking analysis by ear: click tracks and Audacity
 label files, written to `<track dir>/check/`."""
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ import numpy as np
 import soundfile as sf
 
 from .audio import BASE_SR
+from .features import CLASS_SOURCE, read_features
 from .track import TrackDir
 
 
@@ -55,3 +56,28 @@ def write_click_track(path: Path, audio: np.ndarray, tempo: dict, phrases: list[
         if "drop" in p["tags"]:
             click(p["start"] + 0.12, 3520, 0.3, int(0.4 * BASE_SR))
     sf.write(path, np.clip(out, -1, 1), BASE_SR)
+
+
+def write_onset_checks(t: TrackDir):
+    """Per onset class (decision 0012): `onsets_<class>.wav`, the class's
+    source stem at -6 dB with a click per onset (louder = stronger), and
+    `labels_onsets_<class>.txt` with each onset's strength."""
+    f = read_features(t.features_path)
+    out_dir = t.dir / "check"
+    out_dir.mkdir(exist_ok=True)
+    n = int(0.02 * BASE_SR)
+    click = np.sin(2 * np.pi * 2000 * np.arange(n) / BASE_SR) * np.exp(-np.arange(n) / (0.004 * BASE_SR))
+    stems = {}
+    for name in f["classes"]:
+        times, strengths = f["onsets"][name]
+        write_labels(out_dir / f"labels_onsets_{name}.txt",
+                     [(x, x, f"{s:.2f}") for x, s in zip(times, strengths)])
+        source = CLASS_SOURCE[name]
+        if source not in stems:
+            stems = {source: t.stem(source).mean(axis=0)}  # one stem in memory at a time
+        out = stems[source] * 0.5
+        for x, s in zip(times, strengths):
+            i = int(x * BASE_SR)
+            seg = out[i:i + n]
+            seg += (0.15 + 0.35 * s) * click[:len(seg)]
+        sf.write(out_dir / f"onsets_{name}.wav", np.clip(out, -1, 1), BASE_SR)

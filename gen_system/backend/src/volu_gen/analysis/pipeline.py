@@ -1,11 +1,12 @@
 """Analysis pipeline (decision 0004): stems → beats/grid → sections → genre
 → mood → phrases, results stored per track as analysis.json; then waveform
-peaks (decision 0006) as peaks.npz.
+peaks (decision 0006) as peaks.npz and stem features (decision 0012) as
+features.npz.
 
 Runs one stage at a time across all tracks (load model, process every
 track, unload), so peak VRAM is one model's worth. Finished stages are
 skipped unless forced; phrases are re-run whenever an earlier stage ran,
-peaks whenever the stems are newer than them.
+peaks and features whenever the stems are newer than them.
 """
 
 from __future__ import annotations
@@ -19,12 +20,13 @@ import numpy as np
 from . import grid as grid_mod
 from .audio import STEM_NAMES, free_gpu
 from .track import TRACKS_DIR, TrackDir
+from .features import FEATURES_VERSION, compute_features, features_version, write_features
 from .mood import library_z
 from .peaks import BLOCK, LANES, PEAKS_VERSION, chunks_of, compute_peaks, peaks_version, write_peaks
 from .phrases import bar_energy, compute_phrases
 
-STAGES = ["stems", "beats", "sections", "genre", "mood", "phrases", "peaks"]
-CPU_STAGES = {"phrases", "peaks"}  # no model; run after the model stages
+STAGES = ["stems", "beats", "sections", "genre", "mood", "phrases", "peaks", "features"]
+CPU_STAGES = {"phrases", "peaks", "features"}  # no model; run after the model stages
 
 
 def _needs(t: TrackDir, stage: str, force: set[str]) -> bool:
@@ -71,16 +73,19 @@ def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] 
                 run_phrases(t)
             t.save()
             t.drop_audio()
-    if "peaks" in stages:
-        todo = [t for t in tracks if _needs_peaks(t, force)]
+    for stage, needs, run in (("peaks", _needs_peaks, run_peaks),
+                              ("features", _needs_features, run_features)):
+        if stage not in stages:
+            continue
+        todo = [t for t in tracks if needs(t, force)]
         if todo:
-            log(f"[peaks] {len(todo)} track(s)")
+            log(f"[{stage}] {len(todo)} track(s)")
         for t in todo:
             if not t.has_stems():
                 log(f"  {t.name}: needs stems, skipped")
                 continue
-            with _timed(stats, t, "peaks", log):
-                run_peaks(t)
+            with _timed(stats, t, stage, log):
+                run(t)
             t.save()  # duration may be new
             t.drop_audio()
     return stats
@@ -90,12 +95,20 @@ def _needs_phrases(t: TrackDir, force) -> bool:
     return "phrases" in force or "phrases" not in t.data
 
 
-def _needs_peaks(t: TrackDir, force) -> bool:
+def _stale_file(t: TrackDir, path: Path, version: int | None, current: int, stage: str, force) -> bool:
     """Missing, another format version, or older than any stem file."""
-    p = t.peaks_path
-    if "peaks" in force or peaks_version(p) != PEAKS_VERSION:
+    if stage in force or version != current:
         return True
-    return t.has_stems() and any(t.stem_path(n).stat().st_mtime > p.stat().st_mtime for n in STEM_NAMES)
+    return t.has_stems() and any(t.stem_path(n).stat().st_mtime > path.stat().st_mtime for n in STEM_NAMES)
+
+
+def _needs_peaks(t: TrackDir, force) -> bool:
+    return _stale_file(t, t.peaks_path, peaks_version(t.peaks_path), PEAKS_VERSION, "peaks", force)
+
+
+def _needs_features(t: TrackDir, force) -> bool:
+    return _stale_file(t, t.features_path, features_version(t.features_path), FEATURES_VERSION,
+                       "features", force)
 
 
 def _run_stage(stage: str, model, t: TrackDir):
@@ -126,6 +139,12 @@ def run_peaks(t: TrackDir):
     mix = t.audio
     lanes = {"mix": chunks_of(mix), **{n: t.stem_blocks(n, BLOCK) for n in LANES if n != "mix"}}
     write_peaks(t.peaks_path, compute_peaks(lanes, mix.shape[1]))
+
+
+def run_features(t: TrackDir):
+    """Stem features for generators (CPU only); one stem in memory at a time."""
+    write_features(t.features_path, compute_features(
+        lambda lane: t.audio if lane == "mix" else t.stem(lane), t.audio.shape[1]))
 
 
 def set_override(t: TrackDir, bpm: float | None, offset: float | None):

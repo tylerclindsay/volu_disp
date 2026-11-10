@@ -1,8 +1,8 @@
 """Per-track data directory: `<data>/tracks/<sha256[:16]>/` holds the source
-audio (copied in on import), `stems/`, `analysis.json` and `peaks.npz`,
-keyed by the source file's content. This is stored track data, not a
-disposable cache: it holds the user's grid override and is costly to
-rebuild."""
+audio (copied in on import), `stems/`, `analysis.json`, `peaks.npz` and
+`features.npz`, keyed by the source file's content. This is stored track
+data, not a disposable cache: it holds the user's grid override and is
+costly to rebuild."""
 
 from __future__ import annotations
 
@@ -153,6 +153,10 @@ class TrackDir:
     @property
     def peaks_path(self) -> Path:
         return self.dir / "peaks.npz"
+
+    @property
+    def features_path(self) -> Path:
+        return self.dir / "features.npz"
 
     def save(self):
         tmp = tmp_path_for(self.json_path)

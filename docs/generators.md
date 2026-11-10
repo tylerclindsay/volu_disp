@@ -293,8 +293,10 @@ decoded lazily, only when a method in the worker asks for samples.
 **`features.npz`** — needed from the start, since kicks and bass drive most
 methods. A new CPU stage `features` in analysis (full spec in
 `decisions/0012-stem-features.md`):
-- onsets with strength: `kick` / `snare` / `hat` as low / mid / high band
-  hits on the drums stem, plus note onsets for `bass`, `other`, `vocals`
+- onsets with strength: `kick` / `snare` / `tom` / `hat` / `cymbal`
+  recognized on the drums stem by a drum transcription model
+  (`decisions/0016-drum-onsets-adtof.md`), plus note onsets for `bass`,
+  `other`, `vocals`
 - envelopes per lane (mix + four stems, RMS, 300 Hz), unsmoothed, with
   each lane's loud level so `Music` can normalize them
 - a 24-band log-frequency spectrum (40 Hz – 16 kHz, 100 Hz) **per stem

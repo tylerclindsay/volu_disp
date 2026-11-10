@@ -3,8 +3,9 @@
 Python package `volu_gen` (`src/volu_gen/`). Implemented so far:
 **`analysis/`** — stems, beat grid, sections, phrases, genre, mood
 (`../../docs/decisions/0004-audio-analysis.md`, drops:
-`0005-per-bar-drops.md`), and waveform peaks for the UI
-(`0006-waveform-peaks.md`). **`animfile/`** — animation file read/write
+`0005-per-bar-drops.md`), waveform peaks for the UI
+(`0006-waveform-peaks.md`) and stem features for generators
+(`0012-stem-features.md`). **`animfile/`** — animation file read/write
 (`0008-animation-file-format.md`). **`geometry/`** — display config loading,
 pixel positions, geometry order and hash; **`mapping/`** — pixel → drive
 node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`).
@@ -29,15 +30,21 @@ uv run python -m volu_gen.analysis --all          # every stored track
 - Audio files are **imported**: copied to
   `../../data/tracks/<sha256[:16]>/source.<ext>`, keyed by content
   (re-importing the same file is a no-op). Results go next to it
-  (`analysis.json`, `stems/`, `peaks.npz`). A track dir can be passed instead
+  (`analysis.json`, `stems/`, `peaks.npz`, `features.npz`). A track dir can be passed instead
   of an audio file. Finished stages are skipped; `--force stems,beats`
   recomputes; `--stages` runs a subset.
 - `--check` writes `check/clicks.wav` (high click on downbeats, low on
   beats, chime on phrase starts, a second higher chime on drops) and Audacity label files (File → Import →
   Labels). Check any change to grid or phrase rules by ear with these.
+  With features built it also writes `check/onsets_<class>.wav` per onset
+  class (kick, snare, tom, hat, cymbal, bass, other, vocals): the source stem with a
+  click per onset, louder for stronger ones.
 - `--vram-limit-gb 8` emulates the 8 GB target card.
 - `--stages peaks` (re)builds only the waveform peaks from stored stems
   (CPU, ~1–3 s/track); they are redone automatically when stems are newer.
+- `--stages features` (re)builds only the stem features (envelopes,
+  spectra, stereo width, onsets; CPU, ~20 s for a 6-min track), redone the
+  same way.
 - `--override BPM DOWNBEAT_S` sets a user grid on one analyzed track (time
   of any downbeat); `--clear-override` returns to the fit. Only the
   grid-dependent steps (phrases, per-bar energy) are re-run.
@@ -59,4 +66,4 @@ network interface's IP on Windows). Real nodes need v2 firmware.
 uv run pytest
 ```
 Unit tests cover the pure-numpy parts (grid fit, windowed sections,
-phrases, mood normalization, waveform peaks, geometry, mapping, protocol test vectors, packetizer, loopback UDP) with synthetic inputs; no GPU or audio needed.
+phrases, mood normalization, waveform peaks, stem features, geometry, mapping, protocol test vectors, packetizer, loopback UDP) with synthetic inputs; no GPU or audio needed.
