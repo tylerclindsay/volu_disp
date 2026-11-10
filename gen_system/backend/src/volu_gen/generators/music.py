@@ -120,6 +120,10 @@ class Music:
         """Fractional beat count at each time, 0 at the first beat."""
         return _frac_index(t, self.beats)
 
+    def beat_time(self, beat) -> np.ndarray:
+        """Start time of (fractional) beat counts: inverse of `beat_at`."""
+        return _frac_time(beat, self.beats)
+
     def beat_phase(self, t) -> np.ndarray:
         """Position within the beat, [0, 1)."""
         return np.mod(self.beat_at(t), 1.0)

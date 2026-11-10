@@ -127,6 +127,41 @@ Bass and kick stems are often near-mono, which collapses a left/right
 vectorscope to a line; the director should prefer stems with stereo width
 (a feature, below) or the delay-embedding variant.
 
+**As built** (`methods/`, one module each, registered on import;
+`decisions/0019-first-methods.md`). All four draw in `ctx.box` with soft
+edges `ctx.pitch` wide, and share `methods/common.py`: `soft`,
+`hit_env` (kick decays), `Signal.envelope` (a smoothed lane envelope over
+the segment's span) and `Signal.integral` (speed → angle). Values are
+starting points *(tune)*:
+- `geometry` (class `Shapes`): `shapes` from sphere (shell), cube (edges),
+  octahedron (shell), torus (tube) and rings (three at right angles). The
+  shape turns `spin` times per bar about y plus a tumble axis, drifts on a
+  Lissajous path (`wander`), pulses in scale on kicks (`pulse`, 0.12 s
+  decay) and gets a bass halo (`glow`). With `swap_beats`, the next shape
+  morphs in (the two distances blended) over `morph` beats, ending on the
+  swap beat. Suits any phrase, −20 to +6 dB; drops get 2–3 shapes swapping
+  every 1–2 beats, loud parts every 4 beats, quieter parts one shape.
+- `raindrops`: a sea surface at `level`, raised by the bass (`swell`) and
+  slow background waves, with dim water under it (`fill`). Drops land on a
+  share of hats (`hats`), big drops on kicks of strength ≥ 0.5, and
+  `ambient` drops per second at random times so calm parts still rain.
+  The drop list is made once per segment; a drop falls under gravity for
+  0.35 s, then a ring spreads at `speed` and fades (0.45 s), lifting and
+  lighting the surface. Suits groove, breakdown and buildup, −30 to −2 dB,
+  at least 2 bars.
+- `strobe`: flashes `per_beat` times per beat from bar 1, `duty` of the
+  period but at least one frame, halved until within `ctx.strobe_rate`.
+  `pattern`: `all`, `slices` (odd and even slices take turns) or `chase`
+  (one slice per flash, front to back). Color toward white by `white`;
+  brightness follows the drums by `follow`. Suits drops only, −6 to +6 dB.
+- `galaxy`: a disc tilted by `tilt` and `yaw` with `arms` logarithmic
+  spiral arms (`twist`), a bulge and a core. The arms turn rigidly at a
+  speed that follows the mix's energy (a third of `spin` when quiet).
+  Each pixel is a star: a share (`stars`) bright, the rest dust, each
+  twinkling at its own rate (`twinkle`). Kicks brighten it (`kick`, 0.25 s
+  decay). Suits groove, breakdown and buildup, −40 to −4 dB, at least
+  4 bars.
+
 ## Director
 **Segmenting:**
 - Start from the analysis phrases (8 bars from each section start and
@@ -366,6 +401,10 @@ same at any rate:
 - `pos`: normalized, centered, **y up** (rain and fireworks fall, the
   landscape has a ground), divided by the largest half-extent so aspect
   ratio is kept: a method written for the prototype fits the large build
+- `box`: the same positions with each axis stretched to [-1, 1] (y up),
+  so a shape fills the volume whatever its aspect, and `pitch`, the
+  nearest-neighbour spacing in it (soft edges are about this wide); the
+  first methods draw in `box` (`decisions/0019-first-methods.md`)
 - also `pos_mm` and integer `(ix, iy, iz)` per pixel plus slice parity, for
   methods that address slices or strips (alternating-slice strobe)
 - `times(start, stop)`: each frame's start, `k / fps`. The engine shows
@@ -379,9 +418,10 @@ same at any rate:
 
 Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
 (interface, `SegmentInfo`, `Suitability`, registry, `segment_rng`),
-`plan.py` (pydantic plan model), `director.py`, `palette.py` and
-`render.py` (the render job); tests in `tests/test_generators.py`,
-`tests/test_director.py` and `tests/test_render.py`.
+`plan.py` (pydantic plan model), `director.py`, `palette.py`,
+`render.py` (the render job) and `methods/`; tests in
+`tests/test_generators.py`, `tests/test_director.py`,
+`tests/test_render.py` and `tests/test_methods.py`.
 
 ## Output and render job
 - Methods return float32 linear RGB `[0, 1]`. The job blends transitions,
@@ -445,7 +485,8 @@ Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
    levels and contrast weights are tuned by eye once the first methods
    exist.
 3. First methods: `geometry`, `raindrops`, `strobe`, `galaxy` (they cover
-   calm through drop).
+   calm through drop). *Built* (decision 0019); their looks and the
+   director's constants are tuned by eye on the display next.
 4. The rest of the methods (including `oscilloscope` and `vectorscope`);
    `model` last.
 

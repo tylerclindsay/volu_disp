@@ -4,6 +4,7 @@ Imported by the API server for planning, so nothing here imports torch or
 other heavy modules at module level.
 """
 
+from . import methods  # noqa: F401  (importing it registers the methods)
 from .context import STROBE_MAX_RATE, RenderContext, normalized_positions
 from .director import DIRECTOR_VERSION, DirectorParams, make_plan, replan
 from .method import (GROOVE, METHODS, PHRASE_TYPES, PLAN_STREAM, RENDER_STREAM, TRACK_STREAM, Method,

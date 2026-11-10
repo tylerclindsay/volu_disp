@@ -24,8 +24,8 @@ Read first:
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
   README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
   `output/` (implemented), `generators/` (inputs, method interface, plan
-  model, director and render job built; methods next), then `engine/`, `worker/`, `server/`,
-  `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
+  model, director, render job and the first four methods built), then
+  `engine/`, `worker/`, `server/`, `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
   animation files) goes in `../data/` (`../docs/architecture.md` → storage).

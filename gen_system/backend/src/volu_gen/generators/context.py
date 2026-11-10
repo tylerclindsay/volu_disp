@@ -25,6 +25,26 @@ def normalized_positions(positions_mm: np.ndarray) -> np.ndarray:
     return out.astype(np.float32)
 
 
+def box_positions(positions_mm: np.ndarray) -> np.ndarray:
+    """(P, 3) float32: y up, each axis stretched to [-1, 1] (0 for an axis
+    with one pixel), so a shape drawn in it fills the volume whatever the
+    display's aspect ratio."""
+    p = np.asarray(positions_mm, np.float64)
+    lo, hi = p.min(axis=0), p.max(axis=0)
+    half = (hi - lo) / 2
+    out = np.where(half > 0, (p - (lo + hi) / 2) / np.where(half > 0, half, 1.0), 0.0)
+    out[:, 1] *= -1  # config y grows downward
+    return out.astype(np.float32)
+
+
+def nearest_spacing(points: np.ndarray) -> float:
+    """Distance from the pixel nearest the center to its nearest neighbour."""
+    c = int(np.argmin(np.linalg.norm(points, axis=1)))
+    d = np.linalg.norm(points - points[c], axis=1)
+    d = d[d > 0]
+    return float(d.min()) if len(d) else 1.0
+
+
 @dataclass(frozen=True, eq=False)
 class RenderContext:
     """The display and the render settings, shared by every segment.
@@ -44,6 +64,8 @@ class RenderContext:
     palette: tuple[str, ...] = ()
     strobe_max_rate: float = STROBE_MAX_RATE
     pos: np.ndarray = field(init=False)      # (P, 3) float32, normalized, y up
+    box: np.ndarray = field(init=False)      # (P, 3) float32, each axis stretched to [-1, 1], y up
+    pitch: float = field(init=False)         # nearest-neighbour spacing in `box` units
     parity: np.ndarray = field(init=False)   # (P,) int32, 1 on odd (offset) slices
     colors: np.ndarray = field(init=False)   # (n, 3) float32 linear RGB of the palette
 
@@ -51,11 +73,14 @@ class RenderContext:
         if not (isinstance(self.fps, int) and MIN_FPS <= self.fps <= MAX_FPS):
             raise ValueError(f"fps must be a whole number from {MIN_FPS} to {MAX_FPS}, got {self.fps!r}")
         pos = normalized_positions(self.geometry.positions)
+        box = box_positions(self.geometry.positions)
         parity = (self.geometry.iz % 2).astype(np.int32)
         colors = hex_to_linear(self.palette or PALETTES[DEFAULT_PALETTE][0])
-        for a in (pos, parity, colors):
+        for a in (pos, box, parity, colors):
             a.setflags(write=False)
         object.__setattr__(self, "pos", pos)
+        object.__setattr__(self, "box", box)
+        object.__setattr__(self, "pitch", nearest_spacing(box))
         object.__setattr__(self, "parity", parity)
         object.__setattr__(self, "colors", colors)
 

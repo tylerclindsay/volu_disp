@@ -16,9 +16,11 @@ queries over time), `RenderContext`, the method interface and registry,
 the plan model, the director (`make_plan`: track → segments, methods,
 params, transitions, palette; `../../docs/generators.md`) and the render
 job (`render_anim`: plan → blended, quantized frames → `.anim`;
-`../../docs/decisions/0018-render-output.md`).
-Still to come: the methods,
-playback, and the HTTP/WebSocket server for the UI.
+`../../docs/decisions/0018-render-output.md`), and the first methods:
+`geometry`, `raindrops`, `strobe`, `galaxy`
+(`../../docs/decisions/0019-first-methods.md`).
+Still to come: the other methods, playback, and the HTTP/WebSocket server
+for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
 ```
