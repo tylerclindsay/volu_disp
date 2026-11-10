@@ -16,7 +16,7 @@ def meta_for(P: int, frame_count: int, fps: int = 120, **extra) -> dict:
     """Valid writer metadata for P pixels and frame_count frames, with a fixed created time."""
     return {"render_id": "01JTEST", "track_sha256": "ab" * 32, "geometry_hash": "g1",
             "pixel_count": P, "fps": fps, "frame_count": frame_count,
-            "generator": {"id": "test", "version": "1"}, "params": {"speed": 2.5},
+            "generator": {"id": "test", "version": 1}, "params": {"speed": 2.5},
             "analysis": {"version": 3, "tempo_override": None},
             "created": "2026-11-09T00:00:00+00:00", **extra}
 

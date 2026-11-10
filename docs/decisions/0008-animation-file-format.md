@@ -61,7 +61,7 @@ footer   u64  index_offset
 | `frame_count` | int | total frames |
 | `chunk_frames` | int | frames per chunk (a frame count, not seconds) |
 | `codec` | str | `"zstd"` |
-| `generator` | object | `{"id": str, "version": str}` |
+| `generator` | object | `{"id": str, "version": int}`; the director's version, as in the plan (`../generators.md` → Output and render job) |
 | `params` | object | generator parameters (track params) |
 | `plan` | object | the plan rendered (`../generators.md`; added for decision 0011, no version bump) |
 | `analysis` | object | `{"version": int, "tempo_override": object \| null}` |

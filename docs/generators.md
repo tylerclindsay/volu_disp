@@ -328,7 +328,7 @@ same at any rate:
   boundary asks both methods for their part.
 - Randomness: a per-segment RNG seeded from `(seed, segment start bar)`,
   so re-planning or editing one segment doesn't reshuffle the others.
-- Versions: the generator version covers the director; each plan entry
+- Versions (integers): the generator version covers the director; each plan entry
   records its method version. A render is stale if either changed (or the
   geometry hash or file format version; `architecture.md` → Lifecycle),
   and re-rendering it after a version change re-plans first.
