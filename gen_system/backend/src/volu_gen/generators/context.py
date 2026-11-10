@@ -9,6 +9,7 @@ import numpy as np
 
 from ..geometry import MAX_FPS, MIN_FPS, Geometry
 from .music import Music
+from .palette import DEFAULT_PALETTE, PALETTES, hex_to_linear
 
 
 def normalized_positions(positions_mm: np.ndarray) -> np.ndarray:
@@ -26,8 +27,9 @@ def normalized_positions(positions_mm: np.ndarray) -> np.ndarray:
 class RenderContext:
     """The display and the render settings, shared by every segment.
 
-    fps     the display FPS when the render started (decision 0010)
-    seed    the plan's seed (track params)
+    fps      the display FPS when the render started (decision 0010)
+    seed     the plan's seed (track params)
+    palette  the plan's track palette, sRGB hex (empty: the default palette)
     Frame k is shown from k / fps (the engine picks floor(t × fps)), so
     `times` gives each frame's start. Methods work in seconds and never
     assume a rate.
@@ -36,18 +38,22 @@ class RenderContext:
     music: Music
     fps: int
     seed: int = 0
+    palette: tuple[str, ...] = ()
     pos: np.ndarray = field(init=False)      # (P, 3) float32, normalized, y up
     parity: np.ndarray = field(init=False)   # (P,) int32, 1 on odd (offset) slices
+    colors: np.ndarray = field(init=False)   # (n, 3) float32 linear RGB of the palette
 
     def __post_init__(self):
         if not (isinstance(self.fps, int) and MIN_FPS <= self.fps <= MAX_FPS):
             raise ValueError(f"fps must be a whole number from {MIN_FPS} to {MAX_FPS}, got {self.fps!r}")
         pos = normalized_positions(self.geometry.positions)
         parity = (self.geometry.iz % 2).astype(np.int32)
-        for a in (pos, parity):
+        colors = hex_to_linear(self.palette or PALETTES[DEFAULT_PALETTE][0])
+        for a in (pos, parity, colors):
             a.setflags(write=False)
         object.__setattr__(self, "pos", pos)
         object.__setattr__(self, "parity", parity)
+        object.__setattr__(self, "colors", colors)
 
     @property
     def pos_mm(self) -> np.ndarray:

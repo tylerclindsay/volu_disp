@@ -9,7 +9,7 @@ precomputed in `__init__`; nothing is carried from frame to frame.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import ClassVar
 
 import numpy as np
@@ -24,6 +24,7 @@ PHRASE_TYPES = frozenset({"drop", "buildup", "breakdown", GROOVE})
 # RNG streams per segment, so planning and rendering draw independently.
 PLAN_STREAM = 0
 RENDER_STREAM = 1
+TRACK_STREAM = 2   # track-wide draws (the palette), at bar 0
 
 
 def segment_rng(seed: int, start_bar: int, stream: int) -> np.random.Generator:

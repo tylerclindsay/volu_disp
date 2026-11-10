@@ -167,6 +167,48 @@ are, not one fixed rule:
   material) → a longer crossfade, up to a bar.
 - The transition is part of each plan entry, so the editor can change it.
 
+**As built** (`director.py`, `make_plan` / `replan`; constants marked
+*(tune)* there):
+- **Units:** phrase starts (variable tempo: section starts and drops),
+  from bar 1 to one past the last downbeat. Each unit gets a **level**:
+  `high` = a drop phrase; `low` = a breakdown (not also a buildup) or mean
+  mix energy under −10 dB; else `medium`. `high` is drops only: most of an
+  electronic track sits near its loud level (median bar ≈ −4 dB across the
+  library), and switching every 2 bars through all of it was frantic.
+- A unit under 2 bars (a section's short tail) joins the one before and
+  takes its level; a short first unit joins the next; a drop never moves.
+- **Segment length** per level at change rate 1: low 16 bars, medium 4,
+  high 2 *(tune)*; divided by the change rate and rounded to a power of
+  two, 1 to 64 bars. Consecutive units of one level in one section merge
+  up to that length (so a calm intro and breakdown share one segment), and
+  each run is cut into segments of it; a remainder of up to half a segment
+  joins the last one. Never merged across a drop.
+- **Score** = track-param weight × fit: 0 if the segment's tags miss the
+  method's phrase types or it is shorter than `min_bars`, else
+  `exp(−(d / 6 dB)²)` for the energy `d` outside its range. One uniform
+  draw from the segment's plan RNG picks by weight, then the same RNG goes
+  to `choose_params`. The previous segment's method scores 0 unless
+  nothing else fits; if nothing fits at all, the weights alone choose.
+  Mood, genre and position in the track don't enter the score yet.
+- **Contrast** at a boundary bar: `|ΔdB| / 6` (mix, 2 bars either side,
+  capped at 1) + 0.5 per drums/bass in/out within a bar (capped at 1) +
+  0.5 for a section start or 0.25 for a phrase start + 0.5 if the tags
+  change. ≥ 1 → cut; ≥ 0.5 → 1-beat crossfade; ≥ 0.25 → 2 beats; under →
+  one bar. A crossfade is at most a quarter of either segment.
+- **Pinned** segments (a previous plan's, passed to `make_plan`) are cut
+  into the automatic segments, clipped to the track; pins outside it or
+  of an unregistered method are dropped, override fields the method no
+  longer has are dropped, and a bad override value fails planning. A
+  pinned segment draws from its RNG like an automatic one, so pinning
+  doesn't change its automatic params.
+- **Palette:** named palettes in `palette.py`, each with three mood words;
+  auto picks by weighted random choice (track seed, `TRACK_STREAM`), weight
+  `exp(2 × mean z)` of its words. The server should pass library-wide mood
+  z-scores (decision 0004); without them the track's own cosines are
+  standardized across its words, which removes the track's overall level
+  but not each word's bias. Genre isn't used yet. Plans store sRGB hex;
+  `RenderContext.colors` gives methods linear RGB.
+
 ## Plan
 ```jsonc
 {
@@ -221,7 +263,10 @@ are, not one fixed rule:
 ## Studio parameters (v1)
 Two levels:
 
-**Track params** — the director's, constant for the whole track:
+**Track params** — the director's, constant for the whole track
+(`DirectorParams`: `intensity`, `change_rate`, `palette`, `weights`,
+`disabled`, `strobe_max_rate`, `seed`; intensity and the strobe rate don't
+affect the plan and are applied at render):
 - overall intensity / brightness
 - change rate (how quickly segments switch, relative to the default)
 - palette: from the track, or a user pick
@@ -331,8 +376,9 @@ same at any rate:
 - frame count `ceil(duration × fps)`.
 
 Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
-(interface, `SegmentInfo`, `Suitability`, registry, `segment_rng`) and
-`plan.py` (pydantic plan model); tests in `tests/test_generators.py`.
+(interface, `SegmentInfo`, `Suitability`, registry, `segment_rng`),
+`plan.py` (pydantic plan model), `director.py` and `palette.py`; tests in
+`tests/test_generators.py` and `tests/test_director.py`.
 
 ## Output and render job
 - Methods return float32 linear RGB `[0, 1]`. The job blends transitions,
@@ -357,7 +403,9 @@ Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
 1. The `features` analysis stage.
 2. `Music`, `RenderContext`, the director, the plan, and the render job.
    *Built so far:* `Music`, `RenderContext`, the method interface and
-   registry, and the plan model. Next: the director, then the render job.
+   registry, the plan model, and the director. Next: the render job. The
+   director's lengths, levels and contrast weights are tuned by eye once
+   the first methods exist.
 3. First methods: `geometry`, `raindrops`, `strobe`, `galaxy` (they cover
    calm through drop).
 4. The rest of the methods (including `oscilloscope` and `vectorscope`);

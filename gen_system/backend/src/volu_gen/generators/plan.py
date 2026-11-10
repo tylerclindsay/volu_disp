@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .method import MethodParams, SegmentInfo, get_method
 from .music import Music
+from .palette import HexColor
 
 
 class _Model(BaseModel):
@@ -75,7 +76,7 @@ class DirectorInfo(_Model):
 
 class Plan(_Model):
     director: DirectorInfo
-    palette: list[Any] = []
+    palette: list[HexColor] = []   # the track palette, sRGB "#rrggbb"
     segments: list[Segment]
 
     @model_validator(mode="after")

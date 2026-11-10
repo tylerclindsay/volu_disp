@@ -13,8 +13,9 @@ node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`
 (`../../docs/protocol.md`).
 **`generators/`** (started) — `Music` (analysis, features and audio as
 queries over time), `RenderContext`, the method interface and registry,
-and the plan model (`../../docs/generators.md`).
-Still to come: the director, the render job and methods,
+the plan model, and the director (`make_plan`: track → segments, methods,
+params, transitions, palette; `../../docs/generators.md`).
+Still to come: the render job and methods,
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
