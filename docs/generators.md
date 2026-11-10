@@ -24,7 +24,7 @@ Rendering is two steps:
    list of segments, each with a time range, a method, the method's
    params, and how it transitions in. The plan is plain data (JSON).
 2. **Render.** Each segment's method renders its frames; the job blends
-   transitions, converts colors, and writes the animation file.
+   transitions, applies intensity, quantizes, and writes the animation file.
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
     DIR["Director"]
     PLAN["Plan<br/>segments · methods · params"]
     METH["Methods"]
-    OUT["blend transitions →<br/>gamma → uint8"]
+    OUT["blend transitions →<br/>intensity → uint8"]
     ANIM[".anim"]
 
     AJ --> M
@@ -374,15 +374,21 @@ same at any rate:
   (under one frame late: ≤ 8 ms at 120 FPS), a constant the A/V offset
   calibration absorbs.
 - frame count `ceil(duration × fps)`.
+- `strobe_rate`: the fastest a method may flash, flashes/s: the track's
+  `strobe_max_rate`, at most 60 and half the FPS (Smoothness).
 
 Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
 (interface, `SegmentInfo`, `Suitability`, registry, `segment_rng`),
-`plan.py` (pydantic plan model), `director.py` and `palette.py`; tests in
-`tests/test_generators.py` and `tests/test_director.py`.
+`plan.py` (pydantic plan model), `director.py`, `palette.py` and
+`render.py` (the render job); tests in `tests/test_generators.py`,
+`tests/test_director.py` and `tests/test_render.py`.
 
 ## Output and render job
 - Methods return float32 linear RGB `[0, 1]`. The job blends transitions,
-  clips, applies a fixed gamma, and quantizes to uint8 for the file.
+  scales by the track's intensity, clips, and quantizes to uint8 for the
+  file. No gamma curve: the file holds WS2811 PWM values, which are
+  linear in light like the methods' output
+  (`decisions/0018-render-output.md`).
 - Global brightness and a power cap are applied at playback by the engine
   (adjustable live, like the sync offset).
 - The job renders in animation-file chunks (1 s: `fps` frames), in order, and
@@ -399,13 +405,45 @@ Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
 - numpy on the CPU first; allow torch inside a method if a 20k-pixel render
   measures too slow. Methods are registered in a dict keyed by `id`.
 
+**As built** (`render.py`; decision 0018):
+- `render_context(geometry, music, fps, plan)` builds the context from the
+  plan's seed, palette and strobe limit. `Renderer(ctx, plan)` retimes
+  the plan on the current grid and refuses a stale one (`StalePlan`:
+  another director version, a changed or unregistered method), and
+  validates every segment's params and overrides, before rendering a
+  frame. The server re-plans; the job renders exactly what it's given.
+- **Crossfades are centered on the downbeat**: `beats × beat length`,
+  half before and half after, smoothstep weights, each half at most half
+  the segment on its side so fades never overlap. A segment's weight is
+  `ramp(t, start, h_in) − ramp(t, end, h_out)`, so each frame's weights sum
+  to 1; a cut is a step (a frame starting on the downbeat is the new
+  segment's). Blended in linear light.
+- Each segment's method renders only the frames where its weight is
+  above 0. Rendering any frame range gives the same frames, so the chunk
+  size never changes the output (tested at 1, 7, 97 and 500 frames).
+- A method is built at its first frame and dropped after its last, so
+  memory stays flat. Its `SegmentInfo` carries the plan's retimed
+  `start`/`end` (the first segment from 0 s, covering the lead-in; the
+  last to the end of the track).
+- Method output must be float32 `(n, P, 3)` and finite; anything else fails
+  the render, naming the method and frame range.
+- `render_anim(path, ctx, plan, render_id, progress=, cancelled=)` writes
+  the `.anim` (`.tmp`, renamed when done) in 1 s chunks with the metadata
+  of decision 0008 (generator id `director`), calls `progress` and checks
+  `cancelled` between chunks; a cancel raises `RenderCancelled` and leaves
+  no file.
+- Overhead of the job alone (blend, quantize, zstd) at 20k pixels: about
+  80 ms per second of track at 120 FPS, 320 ms at 480 FPS (dev PC, one
+  trivial method); methods will dominate.
+
 ## Build order
 1. The `features` analysis stage.
 2. `Music`, `RenderContext`, the director, the plan, and the render job.
-   *Built so far:* `Music`, `RenderContext`, the method interface and
-   registry, the plan model, and the director. Next: the render job. The
-   director's lengths, levels and contrast weights are tuned by eye once
-   the first methods exist.
+   *Built:* `Music`, `RenderContext`, the method interface and
+   registry, the plan model, the director, and the render job (the worker
+   process that runs it comes with `worker/`). The director's lengths,
+   levels and contrast weights are tuned by eye once the first methods
+   exist.
 3. First methods: `geometry`, `raindrops`, `strobe`, `galaxy` (they cover
    calm through drop).
 4. The rest of the methods (including `oscilloscope` and `vectorscope`);

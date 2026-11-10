@@ -11,6 +11,8 @@ from ..geometry import MAX_FPS, MIN_FPS, Geometry
 from .music import Music
 from .palette import DEFAULT_PALETTE, PALETTES, hex_to_linear
 
+STROBE_MAX_RATE = 60.0  # flashes/s: the default and ceiling (generators.md → Smoothness)
+
 
 def normalized_positions(positions_mm: np.ndarray) -> np.ndarray:
     """(P, 3) float32: centered, y up, divided by the largest half-extent so
@@ -30,6 +32,7 @@ class RenderContext:
     fps      the display FPS when the render started (decision 0010)
     seed     the plan's seed (track params)
     palette  the plan's track palette, sRGB hex (empty: the default palette)
+    strobe_max_rate  the track param, flashes/s; methods use `strobe_rate`
     Frame k is shown from k / fps (the engine picks floor(t × fps)), so
     `times` gives each frame's start. Methods work in seconds and never
     assume a rate.
@@ -39,6 +42,7 @@ class RenderContext:
     fps: int
     seed: int = 0
     palette: tuple[str, ...] = ()
+    strobe_max_rate: float = STROBE_MAX_RATE
     pos: np.ndarray = field(init=False)      # (P, 3) float32, normalized, y up
     parity: np.ndarray = field(init=False)   # (P,) int32, 1 on odd (offset) slices
     colors: np.ndarray = field(init=False)   # (n, 3) float32 linear RGB of the palette
@@ -54,6 +58,12 @@ class RenderContext:
         object.__setattr__(self, "pos", pos)
         object.__setattr__(self, "parity", parity)
         object.__setattr__(self, "colors", colors)
+
+    @property
+    def strobe_rate(self) -> float:
+        """The fastest a method may flash, flashes/s: the track param, at
+        most STROBE_MAX_RATE and half the FPS (one on/off cycle per two frames)."""
+        return min(self.strobe_max_rate, STROBE_MAX_RATE, self.fps / 2)
 
     @property
     def pos_mm(self) -> np.ndarray:

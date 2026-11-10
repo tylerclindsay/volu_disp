@@ -24,7 +24,7 @@ Read first:
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
   README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
   `output/` (implemented), `generators/` (inputs, method interface, plan
-  model and director built; render job and methods next), then `engine/`, `worker/`, `server/`,
+  model, director and render job built; methods next), then `engine/`, `worker/`, `server/`,
   `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
@@ -100,6 +100,9 @@ Design: `../docs/generators.md`. Key rules:
 - Methods carry **no state frame to frame** and must render any frame range
   of their segment. They work in seconds, never assume a frame rate, and
   return float32 linear RGB.
+- The render job blends in linear light and writes linear PWM values (no
+  gamma curve); it refuses stale plans rather than re-planning
+  (`../docs/decisions/0018-render-output.md`).
 - Bump a method's `version` whenever its output changes for the same params.
 - Randomness: a per-segment RNG seeded from `(seed, segment start bar)`.
 - Smoothness first: soft edges about one pixel pitch wide, eased param

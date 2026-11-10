@@ -25,7 +25,8 @@ class _Model(BaseModel):
 
 class Transition(_Model):
     """How a segment comes in. `cut`: hard cut on its first downbeat.
-    `crossfade`: from the previous segment over `beats` beats."""
+    `crossfade`: from the previous segment over `beats` beats, centered on
+    that downbeat (decision 0018)."""
     kind: Literal["cut", "crossfade"] = "cut"
     beats: float = Field(0.0, ge=0.0)
 

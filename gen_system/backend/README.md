@@ -11,11 +11,13 @@ pixel positions, geometry order and hash; **`mapping/`** — pixel → drive
 node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`).
 **`output/`** — protocol v2, packetizer, UDP sender and a simulated node
 (`../../docs/protocol.md`).
-**`generators/`** (started) — `Music` (analysis, features and audio as
+**`generators/`** — `Music` (analysis, features and audio as
 queries over time), `RenderContext`, the method interface and registry,
-the plan model, and the director (`make_plan`: track → segments, methods,
-params, transitions, palette; `../../docs/generators.md`).
-Still to come: the render job and methods,
+the plan model, the director (`make_plan`: track → segments, methods,
+params, transitions, palette; `../../docs/generators.md`) and the render
+job (`render_anim`: plan → blended, quantized frames → `.anim`;
+`../../docs/decisions/0018-render-output.md`).
+Still to come: the methods,
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)

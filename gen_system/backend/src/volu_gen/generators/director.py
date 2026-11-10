@@ -34,6 +34,7 @@ from typing import Annotated
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .context import STROBE_MAX_RATE
 from .method import METHODS, PLAN_STREAM, TRACK_STREAM, Method, SegmentInfo, Suitability, segment_rng
 from .music import Music
 from .palette import PALETTES, HexColor, choose_palette, mood_scores
@@ -81,7 +82,7 @@ class DirectorParams(BaseModel):
     palette: str | list[HexColor] = "auto"
     weights: dict[str, Annotated[float, Field(ge=0.0)]] = {}
     disabled: list[str] = []
-    strobe_max_rate: float = Field(60.0, gt=0.0, le=60.0)
+    strobe_max_rate: float = Field(STROBE_MAX_RATE, gt=0.0, le=STROBE_MAX_RATE)
     seed: int = Field(0, ge=0)
 
     @field_validator("palette")
