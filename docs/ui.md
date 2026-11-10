@@ -122,9 +122,16 @@ Table of tracks: title, length, stems status, BPM, animation status
   boundaries, 8-bar phrases with drop / buildup / breakdown tags, and
   drums/bass in/out markers, aligned to the beat grid. They show what the
   generator sees and make a bad grid or phrasing obvious at a glance.
-- **Parameters** are constant for the whole track (no per-section values or
-  automation in v1). The generator may still vary its output over time from
-  the stems and BPM; the user-set parameters don't.
+- **Parameters** come in two levels (`generators.md` → Studio parameters):
+  - **Track params**, constant for the whole track: intensity, change
+    rate, palette, enabled methods and weights, strobe max rate, seed.
+  - **Instance params**, per use of a method: a **segment lane** above the
+    stem lanes shows the plan; select a block to edit that instance's
+    params. Edited instances are pinned across re-plans; "reset" returns
+    a field to automatic.
+  - No automation *within* a segment in v1.
+- The segment lane updates as soon as a track param changes (planning is
+  instant); frames follow on **Render**.
 - The parameter form is **generated from the generator's parameter schema**
   (e.g. pydantic → JSON Schema): sliders, color pickers, stem selects. Adding
   a parameter needs no UI code.
@@ -133,11 +140,12 @@ Table of tracks: title, length, stems status, BPM, animation status
   continues on the old frames → when done, playback resumes at the same
   playhead on the new frames.
 - **Versions:** one **Draft** slot per track, overwritten by every render.
-  **Save draft as version** keeps it with its parameters; **Set active**
-  picks what the queue plays. Selecting a version loads its parameters into
-  the form.
-- **Presets:** named parameter sets per generator, reusable across tracks.
-  Undo covers parameter edits.
+  **Save draft as version** keeps it with its parameters and plan
+  (including instance edits); **Set active** picks what the queue plays.
+  Selecting a version loads its parameters and plan into the form.
+- **Presets:** named sets of track params per generator, reusable across
+  tracks (instance edits are track-specific and not in presets). Undo
+  covers track and instance param edits.
 - If full renders get too slow on the large display, add a "draft quality"
   option (e.g. render at 30 FPS) before reaching for the loop preview.
 
@@ -166,6 +174,10 @@ Table of tracks: title, length, stems status, BPM, animation status
   that can render any time range independently (no state carried across
   frames, or recomputed from a short look-back window). Write generators that
   way where it's cheap, so this stays possible.
-- Parameters that change over the track (per-section values / automation).
+- Parameter automation within a segment.
+- **Manual plan editor in Studio:** beyond v1's instance params, choose
+  which method runs on which beats, bars, or sections, and change segment
+  boundaries and transitions; edited entries are pinned across re-plans
+  (`generators.md` → Plan).
 - Playlists, crossfades.
 - A separate "show mode" UI.

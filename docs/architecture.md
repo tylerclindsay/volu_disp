@@ -9,9 +9,10 @@ section of `gen_system/AGENTS.md` wherever the two differ.
 Open questions are collected at the end; items marked *(proposed)* are the
 current default until decided.
 
-Related: `requirements.md`, `ui.md`, `protocol.md`,
+Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
-`decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`.
+`decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`,
+`decisions/0009-audio-output-api.md`.
 
 ---
 
@@ -68,7 +69,8 @@ The UI talks only to the API server.
 - FastAPI + uvicorn, one asyncio loop. Entry point (`volu serve`); spawns
   the engine and the worker, and respawns them if they die.
 - **SQLite** holds: tracks (key, name, original path, analysis status, BPM), versions
-  (draft/saved, params, generator version, geometry hash, file path),
+  (draft/saved, track params, plan, generator version, geometry hash, file
+  path),
   presets, settings, the play queue, and the job queue. The server is its
   only writer.
 - **Imports tracks** (see Storage layout → Import): copies uploaded or
@@ -168,7 +170,7 @@ the animation in `current` at the next frame, keeping audio and playhead.
 |---|---|---|
 | `analyze` | one track, stages, force set | sha, BPM/grid summary, status |
 | `regrid` | sha, BPM / grid-offset override | updated phrases, events, bars (CPU, seconds) |
-| `render` | sha, generator id + params, fps, geometry hash, output path | anim path, frame count, generator version |
+| `render` | sha, generator id + track params, plan (made by the server, `generators.md`), fps, geometry hash, output path | anim path, frame count, generator version |
 
 **Tracks are processed in series.** A multi-file upload or folder scan
 queues one `analyze` job per track, and each track gets its default
@@ -375,7 +377,7 @@ size and can delete them.
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
-| `features.npz` *(proposed, not yet built)* | Per-frame stem features for generators (envelopes, onsets) at `max_fps` | a future CPU stage | — |
+| `features.npz` *(proposed, not yet built)* | Stem features for generators (kick/snare onsets, envelopes, band spectrum) at a fixed rate, independent of FPS (`generators.md` → Inputs) | a future CPU stage | — |
 | `check/` | Listening aids: `clicks.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
 - The decoded mix is **not** stored: `source.<ext>` is decoded whenever
@@ -449,7 +451,7 @@ re-measured on real renders):
 | `geometry/` | display config → positions, geometry hash |
 | `mapping/` | pixel → node/strip/index, validation |
 | `animfile/` | animation file read/write; implemented (decision 0008) |
-| `generators/` | generator interface + generators |
+| `generators/` | director, plan, methods (`generators.md`) |
 | `output/` | packetizer, UDP sender |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner) |
@@ -483,21 +485,21 @@ Former open questions, now part of the design above:
   thread (Storage layout → `animations/`, Engine threads,
   `decisions/0008-animation-file-format.md`). Decode costs ≤ ~1.5 % of a
   core at 20k pixels, so engine CPU is not a constraint.
+- **Audio output API: WASAPI shared by default, exclusive as a setting**
+  (`decisions/0009-audio-output-api.md`). Absolute latency barely matters
+  here: frames are scheduled from the audio clock and `display_offset`
+  absorbs whatever latency there is. What matters is that latency is
+  **stable and correctly reported** (`stream.time` vs. DAC timestamps).
+  - Shared mode coexists with other apps and won't fail when the device is
+    busy; the Windows mixer runs at its own sample rate, so the engine
+    resamples to the device rate (or uses
+    `WasapiSettings(auto_convert=True)`).
+  - Exclusive mode gives lower, tighter latency but locks the device.
+  - Calibration is stored per (device, mode), since the offset differs.
+  - Still to verify with the calibration flash + click once the engine
+    exists.
 
 ## Open questions
-1. **Generator interface** — inputs (positions, analysis, per-frame stem
-   features, params), and whether any time range must render independently
-   (needed for the deferred loop preview). Per-frame stem features
-   (envelopes, onsets) are not produced by analysis yet; proposed home:
-   `tracks/<key>/features.npz`.
-2. **Audio output API** *(proposed: WASAPI shared by default, exclusive as
-   a setting)*. Absolute latency barely matters here: frames are scheduled
-   from the audio clock and `display_offset` absorbs whatever latency
-   there is. What matters is that latency is **stable and correctly
-   reported** (`stream.time` vs. DAC timestamps). Shared mode coexists with
-   other apps and won't fail when the device is busy; the Windows mixer
-   runs at its own sample rate, so the engine resamples to the device rate
-   (or uses `WasapiSettings(auto_convert=True)`). Exclusive mode gives lower,
-   tighter latency but locks the device. Store calibration per (device,
-   mode), since the offset differs. Verify with the calibration flash +
-   click before committing.
+1. **Generator interface** — design in progress in `generators.md`: a
+   director that plans segments and picks a method per segment, then
+   renders the plan. Its own open questions are listed there.
