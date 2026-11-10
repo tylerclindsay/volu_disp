@@ -17,7 +17,8 @@ geometry:
     y: 25                       # ½ pixel_spacing
 
 timing:
-  max_fps: 120                  # animations are rendered at this rate
+  default_fps: 120              # display FPS until changed in the UI: 60, 120, or 240
+                                # (decision 0010); animations render at the display FPS
 
 network:
   udp_port: 7777

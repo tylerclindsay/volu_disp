@@ -8,7 +8,8 @@ Status: draft — collected from discussion, not final.
 - Prototype: 10 × 12 × 8 (x wide × y tall × z deep), 2 drive nodes.
 - Configurable mapping: each drive node is assigned a rectangular section
   (prism or cube) of the display.
-- Target frame rate **120 FPS**, configurable in the UI.
+- Display frame rate **60, 120 (default), or 240 FPS**, set in the UI
+  (`decisions/0010-display-fps.md`).
 
 ## Generation pipeline
 Triggered from the UI when the user adds an audio file:
@@ -28,9 +29,9 @@ Triggered from the UI when the user adds an audio file:
    parts of the animation) to create graphics synchronized to the music.
    What the animations look like is not yet decided.
 4. Output: an **animation file** of structured frame data (format:
-   `decisions/0008-animation-file-format.md`), rendered at the
-   maximum frame rate (currently 120 FPS, a single config value). Lower
-   playback frame rates are derived from it at playback.
+   `decisions/0008-animation-file-format.md`), rendered at the display
+   frame rate. Lowering the rate later needs no re-render; raising it
+   (e.g. to 240 FPS) does.
 
 ## UI
 - Settings, including playback frame rate.

@@ -12,8 +12,8 @@ frames) and the worker (GPU jobs). The IPC must:
   control thread does competes for the GIL with the frame thread;
 - integrate with the server's single asyncio loop, on Windows first;
 - carry low-rate control (commands, ~20 Hz status) and a preview stream of
-  up to 120 FPS × 60 KB (20k pixels; ≈ 7.2 MB/s) where only the newest
-  frame matters.
+  up to 120 FPS × 60 KB (20k pixels; ≈ 7.2 MB/s; twice that at 240 FPS,
+  decision 0010) where only the newest frame matters.
 
 The first draft used `multiprocessing.connection` (named pipes, a
 `Listener` in each child). Nothing was built on it. Its problems:

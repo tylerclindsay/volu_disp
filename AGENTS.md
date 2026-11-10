@@ -13,7 +13,7 @@ Software guidance for the host is in `gen_system/AGENTS.md`.
 ```
 AGENTS.md            this file
 docs/                requirements, architecture, protocol spec, decisions/
-config/displays/     display configs (geometry, nodes, strips, max FPS)
+config/displays/     display configs (geometry, nodes, strips, default FPS)
 firmware/drive_node/ drive node firmware (PlatformIO, Arduino, FastLED)
 pcb/                 KiCad projects (see Hardware)
 gen_system/          host software: backend/ (Python), ui/ (React)
@@ -55,9 +55,13 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 - Drive nodes use static IPs `192.168.1.(100 + NODE_ID)`, OTA updates via
   espota, and blank their LEDs after `DATA_TIMEOUT_MS` (3 s) without valid
   packets.
+- **Display FPS** is a host UI setting: **60, 120 (default), or 240**
+  (`docs/decisions/0010-display-fps.md`). Animations render at it; don't
+  assume 120.
 - WS2811 timing is ≈ 30 µs/pixel per strip. A frame takes roughly
-  `longest_strip × 30 µs` (+ reset), so at 120 FPS (8.33 ms) strips are capped
-  at **~270 pixels**. Validate any frame rate against the longest strip.
+  `longest_strip × 30 µs` (+ reset), so strips are capped at **~550 / ~270 /
+  ~135 pixels** at 60 / 120 / 240 FPS. Validate the chosen FPS against the
+  longest strip.
 
 ## Display geometry
 - **Size is not fixed.** A small prototype is being built now; a much larger
@@ -82,7 +86,7 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
   (prism or cube) of the display, given as index ranges on x, y, z.
 - Each (x, z) column inside a section is one strip on that node. Sections
   must not overlap, must together cover the whole display, and each must hold
-  ≤ 64 strips (and strips short enough for the target FPS).
+  ≤ 64 strips (and strips short enough for the display FPS).
 - Defined per display in `config/displays/*.yaml`. Prototype: node 1 owns
   slices z 0–3, node 2 owns z 4–7 (40 strips each).
 - **Pixel 0 is at the top of every strip** (y = 0 is the top).

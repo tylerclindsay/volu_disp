@@ -37,9 +37,10 @@ Read first:
   Output is a deterministic, pre-rendered **animation file**: audio
   reference + frame rate + voxel frames + metadata (BPM, generator
   version/params, geometry hash).
-- Animations are rendered at the **maximum frame rate** (`timing.max_fps`,
-  currently 120). Lower playback FPS settings are derived by
-  decimating/resampling at playback, not by regenerating.
+- Animations are rendered at the **display FPS**: a UI setting of 60, 120
+  (default), or 240 (`../docs/decisions/0010-display-fps.md`). Never
+  assume 120. A lower display FPS plays existing renders by dropping
+  frames; a higher one needs a re-render.
 - **Playback** only reads an animation file and does two things: play audio
   and send frames. No analysis or rendering in the hot path.
 - Live/reactive modes (if wanted later) should still produce frames through
@@ -124,7 +125,8 @@ Generators never know about nodes, strips, or packets.
 - Geometry/mapping: every physical pixel mapped exactly once; offsets
   produce the expected positions.
 - Timing: a headless playback test that measures frame-send jitter and
-  drift against the audio clock over a full-length track, at 120 FPS.
+  drift against the audio clock over a full-length track, at each display
+  FPS (60, 120, 240).
 - Generators: deterministic output for a given audio + params (snapshot tests).
 
 ### 8. Tech stack (tentative — not decided)

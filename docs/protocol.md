@@ -56,7 +56,7 @@ each other.
 - `frame` is a sender sequence counter: it increments by 1 for every frame
   sent and is independent of the animation frame index (so seeking or
   changing FPS doesn't make it jump). It does not wrap in practice (u32 at
-  120 FPS ≈ 414 days).
+  240 FPS ≈ 207 days).
 - Each node keeps two buffers: a **back buffer** that PIXELS write into and a
   **front buffer** being clocked out to the LEDs.
 - On PIXELS with frame `F`:
@@ -72,11 +72,16 @@ each other.
 - If no valid packet arrives for `DATA_TIMEOUT_MS` (3 s), the node blanks.
 
 ## Timing constraints
+- The frame rate is the host's **display FPS**: 60, 120 (default), or 240,
+  set in the UI (`decisions/0010-display-fps.md`). The protocol itself
+  doesn't fix a rate.
 - A show takes ≈ `LEDS_PER_STRIP × 30 µs` + reset. The frame period must be
-  longer than that (120 FPS → ≤ ~270 pixels per strip).
+  longer than that: ≤ ~550 / ~270 / ~135 pixels per strip at
+  60 / 120 / 240 FPS.
 - Per-node bandwidth: `NUM_STRIPS × LEDS_PER_STRIP × 3 × FPS` bytes/s.
-  Worst case (64 × 270 at 120 FPS) ≈ 50 Mbit/s of the WT32's 100 Mbit link
-  — test early on hardware.
+  Since strip length caps pixels × FPS, the worst case is ≈ 50 Mbit/s at
+  any of the three rates (e.g. 64 × 270 at 120 FPS) of the WT32's
+  100 Mbit link — test early on hardware.
 
 ## Reserved
 - Type `3`: status/telemetry from nodes (frame counts, incomplete frames,

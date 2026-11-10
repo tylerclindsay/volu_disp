@@ -23,7 +23,9 @@ engine plays it. The file must:
 
 ## Decision
 **A custom single-file container: frames in independently compressed
-chunks of `chunk_frames` frames (default 120 = 1 s at 120 FPS), each
+chunks of `chunk_frames` frames (default 120 = 1 s at 120 FPS; the render
+job passes the file's fps so chunks stay 1 s at 60 / 240 FPS, decision
+0010), each
 optionally temporal-delta filtered and compressed with zstd, with a chunk
 index at the end of the file.** Lossless.
 
@@ -61,7 +63,8 @@ footer   u64  index_offset
 | `chunk_frames` | int | frames per chunk (a frame count, not seconds) |
 | `codec` | str | `"zstd"` |
 | `generator` | object | `{"id": str, "version": str}` |
-| `params` | object | generator parameters |
+| `params` | object | generator parameters (track params) |
+| `plan` | object | the plan rendered (`../generators.md`; added for decision 0011, no version bump) |
 | `analysis` | object | `{"version": int, "tempo_override": object \| null}` |
 | `created` | str | ISO 8601 UTC |
 

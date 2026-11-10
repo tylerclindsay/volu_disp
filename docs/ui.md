@@ -76,7 +76,8 @@ Table of tracks: title, length, stems status, BPM, animation status
   (`decisions/0004-audio-analysis.md`).
 - Row actions: **Play now**, **Add to queue**, open in Studio.
 - "Stale" = the active version was rendered against a different geometry
-  hash or generator version.
+  hash or generator version, or below the current display FPS.
+  **Re-render stale** queues them all (like import work).
 
 ### Player
 ```
@@ -147,7 +148,8 @@ Table of tracks: title, length, stems status, BPM, animation status
   tracks (instance edits are track-specific and not in presets). Undo
   covers track and instance param edits.
 - If full renders get too slow on the large display, add a "draft quality"
-  option (e.g. render at 30 FPS) before reaching for the loop preview.
+  option (e.g. render at a quarter of the display FPS) before reaching for
+  the loop preview.
 
 ### Display
 - 3D view colored by drive node section (optionally by strip). Hover a pixel
@@ -158,8 +160,12 @@ Table of tracks: title, length, stems status, BPM, animation status
   display offset (see Sync).
 
 ### Settings
-- Playback FPS (validated against the longest strip: warn above ~270 pixels
-  per strip at 120 FPS).
+- **Display FPS: 60, 120 (default), or 240** (`decisions/0010-display-fps.md`).
+  Renders use it; lowering it plays existing renders by dropping frames,
+  raising it flags renders below the new rate as stale (Library →
+  **Re-render stale**). A rate the longest strip can't meet is refused
+  (≈ 550 / 270 / 135 pixels per strip at 60 / 120 / 240 FPS).
+- Preview FPS (≤ display FPS): set to the UI monitor's refresh rate.
 - Audio output device and mode; display and preview offsets (same values as
   the Sync popover).
 - Network interface for the display.

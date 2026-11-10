@@ -5,7 +5,8 @@ question 1 in `architecture.md`. Items marked *(proposed)* are defaults
 until decided; questions still open are collected at the end.
 
 Related: `architecture.md` (render job, storage), `ui.md` (Studio),
-`decisions/0004-audio-analysis.md` (`analysis.json`).
+`decisions/0004-audio-analysis.md` (`analysis.json`),
+`decisions/0010-display-fps.md`, `decisions/0011-planning-in-server.md`.
 
 ---
 
@@ -193,12 +194,19 @@ are, not one fixed rule:
   Its automatic fields are re-chosen as usual.
 - Segments are anchored by **bar numbers**, so they survive a grid
   override; `start`/`end` are recomputed from the grid.
-- **Planning is cheap and runs in the server** *(proposed)*, not as a
-  worker job: it is pure Python over `analysis.json` and `features.npz`
-  (milliseconds, no models), so Studio shows the new plan as soon as a
-  track param changes, without waiting behind analysis jobs. The render
-  job is given the plan. The version's DB row stores the track params and
-  the plan; the `.anim` metadata carries a copy.
+- **Planning runs in the API server**, not as a worker job
+  (`decisions/0011-planning-in-server.md`): it is pure Python over
+  `analysis.json` and `features.npz` (milliseconds, no models), so Studio
+  shows the new plan as soon as a track param or instance changes, without
+  waiting behind analysis jobs. The render job is given the plan and
+  renders exactly it. The version's DB row stores the track params and the
+  plan; the `.anim` metadata carries a copy (`plan` key).
+- Consequence: everything planning touches (the director, `Music`, each
+  method's `Params` and `choose_params`) is imported by the server, so
+  `generators/` keeps heavy imports (torch) out of module level.
+- **Plans don't depend on the FPS.** Segments are in bars and seconds;
+  the display FPS only enters at render time, so changing it re-renders
+  the same plan.
 - **Manual editor (deferred):** also change a segment's method,
   boundaries, and transition; those edits pin the segment the same way.
 
@@ -241,9 +249,14 @@ things must glide between pixels instead of popping:
 - **Hits:** a kick is a near-instant attack with a smooth decay
   (~100–300 ms): punchy without flicker.
 - **Exceptions:** `static`, `strobe`, and star twinkle flicker on purpose.
-  Strobe's max flash rate defaults to the display maximum (one on/off
-  cycle per two frames: 60 flashes/s at 120 FPS); the track param can
-  lower it.
+  Strobe's max flash rate defaults to the display maximum: one on/off
+  cycle per two frames at the render's FPS (30 / 60 / 120 flashes/s at
+  60 / 120 / 240 FPS); the track param can lower it.
+- **Dropped frames alias fast flicker.** A render played below its own
+  FPS (decision 0010) drops frames, so a strobe at the render's maximum
+  plays as solid on or off. The plan records its fastest strobe rate; a
+  version whose rate is above half the current display FPS is flagged
+  stale, like a render below the display FPS *(proposed)*.
 
 ## Inputs
 **`Music`** — built once per render from `analysis.json`,
@@ -260,7 +273,8 @@ hatch.
   (`source.<ext>`).
 - `music.frame_windows(stem, start, stop, length)` → `[frames, length, 2]`:
   the window of samples ending at each frame's time, the common case for
-  waveform methods (at 120 FPS a frame spans ~367 samples).
+  waveform methods (a frame spans ~735 / ~367 / ~184 samples at
+  60 / 120 / 240 FPS).
 - Decoded once per render and cached in the render job: four stereo stems
   of a 4-min track are ~340 MB as float32, fine for the worker; decode per
   chunk if the large build makes this tight.
@@ -275,12 +289,14 @@ methods. A new CPU stage in analysis *(proposed)*:
   for `spectrogram` and for coloring by what a stem is doing
 - stereo width per stem (side / mid energy), so the director can choose
   `vectorscope` and its stem
-- at a fixed rate (e.g. 200 Hz), independent of the display FPS; `Music`
-  resamples
+- at a fixed rate at least the highest display FPS (e.g. 240 Hz), so it
+  is independent of the display FPS setting; `Music` resamples
 - Methods use features where they can (cheap, precomputed) and raw
   samples where they need the waveform's shape.
 
-**`RenderContext`** — pixel positions, fps, frame count, `Music`, seed:
+**`RenderContext`** — pixel positions, fps (the display FPS the render was
+queued at: 60, 120, or 240), frame count, `Music`, seed. Methods work in
+seconds, never assume a frame rate, and look the same at any of the three:
 - `pos`: normalized, centered, **y up** (rain and fireworks fall, the
   landscape has a ground), divided by the largest half-extent so aspect
   ratio is kept: a method written for the prototype fits the large build
@@ -292,7 +308,7 @@ methods. A new CPU stage in analysis *(proposed)*:
   clips, applies a fixed gamma, and quantizes to uint8 for the file.
 - Global brightness and a power cap are applied at playback by the engine
   (adjustable live, like the sync offset) *(proposed)*.
-- The job renders in animation-file chunks (120 frames), in order, and
+- The job renders in animation-file chunks (1 s: `fps` frames), in order, and
   checks for cancel between chunks. A chunk that straddles a segment
   boundary asks both methods for their part.
 - Randomness: a per-segment RNG seeded from `(seed, segment start bar)`,
@@ -312,6 +328,9 @@ methods. A new CPU stage in analysis *(proposed)*:
 
 ## Settled
 - Methods can read the stems' and mix's audio samples, not only features.
+- Planning runs in the API server (decision 0011).
+- Methods render at the display FPS (60 / 120 / 240, decision 0010) and
+  must not assume a rate.
 - Repeated parts (e.g. a second drop) pick freely, like any segment.
 - Transitions depend on the contrast between neighboring segments, with a
   1–2 beat crossfade as the baseline; drops always cut hard.
