@@ -391,7 +391,8 @@ cancel = kill and respawn; the new worker reconnects and says `hello`.
 Distinct, separately testable layers (from `gen_system/AGENTS.md`):
 1. **Geometry** — display config → a 3D position for every pixel (with
    odd-slice offsets). Used by generators, the UI preview, and the mapping.
-2. **Voxel frames** — one RGB color per pixel, in geometry order.
+2. **Voxel frames** — one RGB color per pixel, in geometry order
+   (strip by strip, top to bottom: `i = (z * X + x) * Y + y`, decision 0013).
    Generators evaluate fields at pixel positions; they never assume a grid
    and never know about nodes, strips, or packets.
 3. **Mapping** — pixel → (drive node, strip, pixel index) from each node's
@@ -596,8 +597,8 @@ re-measured on real renders):
 | `volu_gen/` module | Purpose |
 |---|---|
 | `analysis/` | implemented (decision 0004) |
-| `geometry/` | display config → positions, geometry hash |
-| `mapping/` | pixel → node/strip/index, validation |
+| `geometry/` | display config → positions, geometry hash; implemented (decision 0013) |
+| `mapping/` | pixel → node/strip/index, validation; implemented (decision 0013) |
 | `animfile/` | animation file read/write; implemented (decision 0008) |
 | `generators/` | director, plan, methods (`generators.md`). Imported by the server (planning: director + each method's `choose_params`) and the worker (rendering), so no torch or other heavy imports at module level |
 | `output/` | packetizer, UDP sender |

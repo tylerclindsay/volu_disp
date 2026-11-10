@@ -27,6 +27,7 @@ dependencies = [
     "einops",
     "librosa",
     "zstandard>=0.25.0",
+    "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]

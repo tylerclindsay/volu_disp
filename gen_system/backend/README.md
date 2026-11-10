@@ -5,8 +5,10 @@ Python package `volu_gen` (`src/volu_gen/`). Implemented so far:
 (`../../docs/decisions/0004-audio-analysis.md`, drops:
 `0005-per-bar-drops.md`), and waveform peaks for the UI
 (`0006-waveform-peaks.md`). **`animfile/`** — animation file read/write
-(`0008-animation-file-format.md`). Still to come: geometry,
-generators, output (mapping, packetizer, UDP sender),
+(`0008-animation-file-format.md`). **`geometry/`** — display config loading,
+pixel positions, geometry order and hash; **`mapping/`** — pixel → drive
+node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`).
+Still to come: generators, output (packetizer, UDP sender),
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
@@ -43,4 +45,4 @@ uv run python -m volu_gen.analysis --all          # every stored track
 uv run pytest
 ```
 Unit tests cover the pure-numpy parts (grid fit, windowed sections,
-phrases, mood normalization, waveform peaks) with synthetic inputs; no GPU or audio needed.
+phrases, mood normalization, waveform peaks, geometry, mapping) with synthetic inputs; no GPU or audio needed.

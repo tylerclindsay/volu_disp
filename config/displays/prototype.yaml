@@ -1,4 +1,5 @@
-# Prototype display config. Draft schema — not yet read by any code.
+# Prototype display config. Read by volu_gen.geometry / volu_gen.mapping
+# (decision 0013); unknown keys are errors.
 # Units: mm. Indices are 0-based.
 #
 # Axes:   x = across a slice (strip index within a slice)
