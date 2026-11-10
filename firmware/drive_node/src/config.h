@@ -42,8 +42,8 @@
 //   NUM_STRIPS = section width * depth, LEDS_PER_STRIP = section height.
 // Strip s is (z - z0) * width + (x - x0) (docs/hardware.md -> Drive node
 // mapping) and plugs into edge node s / 32 (E1, E2), connector J(s % 32 + 1).
-// Defaults: the bench (config/displays/bench.yaml), strips on E1 J1, J2.
-// Prototype (config/displays/prototype.yaml): 40 x 12.
+// Defaults: 40 x 12, matching config/displays/bench.yaml and each node of
+// config/displays/prototype.yaml.
 #ifndef NUM_STRIPS
 #define NUM_STRIPS 40
 #endif

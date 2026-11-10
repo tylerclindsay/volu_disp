@@ -3,7 +3,7 @@
 (docs/protocol.md). Standalone: no gen_system install needed.
 
 Usage:
-    python tools/udp_rainbow_sender.py 192.168.1.101 --strips 2 --leds 10 --fps 60
+    python tools/udp_rainbow_sender.py 192.168.1.101 --strips 40 --leds 12 --fps 60
 
 By default the last PIXELS packet of each frame carries SHOW_NOW, so no
 broadcast is needed. --sync ADDR sends a SYNC there instead (e.g. the
@@ -54,8 +54,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("host")
     ap.add_argument("--port", type=int, default=7777)
-    ap.add_argument("--strips", type=int, default=2)
-    ap.add_argument("--leds", type=int, default=10, help="pixels per strip (LEDS_PER_STRIP)")
+    ap.add_argument("--strips", type=int, default=40)
+    ap.add_argument("--leds", type=int, default=12, help="pixels per strip (LEDS_PER_STRIP)")
     ap.add_argument("--fps", type=float, default=60)
     ap.add_argument("--sync", metavar="ADDR", help="send SYNC to ADDR instead of using SHOW_NOW")
     args = ap.parse_args()

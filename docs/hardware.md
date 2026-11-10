@@ -50,7 +50,7 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
   TX from IO3 while the node runs.
 - Strip layout per node: `NUM_STRIPS`, `LEDS_PER_STRIP` in
   `firmware/drive_node/src/config.h` (or `-D` build flags), default the
-  2 × 10 bench (`config/displays/bench.yaml`).
+  40 × 12 bench (`config/displays/bench.yaml`).
 - Firmware buffering: PIXELS write a back buffer; a latch copies it to a
   pending buffer at once; when the LEDs are free the show task swaps
   pending and front, and the DMA interrupt encodes front on the fly.
