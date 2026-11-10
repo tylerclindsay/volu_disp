@@ -1,8 +1,9 @@
 # Generators
 
 Status: **working draft.** Design of `volu_gen/generators/`, replacing open
-question 1 in `architecture.md`. Items marked *(proposed)* are defaults
-until decided; questions still open are collected at the end.
+question 1 in `architecture.md`. Values marked *(tune)* are starting
+points to check by eye once methods exist; questions still open are
+collected at the end.
 
 Related: `architecture.md` (render job, storage), `ui.md` (Studio),
 `decisions/0004-audio-analysis.md` (`analysis.json`),
@@ -79,7 +80,7 @@ drive most of them visibly.
 | `vectorscope` | Stereo shapes: left vs. right channel as x / y (rotated 45° to mid/side, as a goniometer does), with a trail receding through the slices. 3D variant: delay embedding, `(s(t), s(t−τ), s(t−2τ))`, gives Lissajous-like 3D shapes even from mono stems | samples of a chosen stem; stereo width → shape size; kick → flash |
 | `model` *(deferred)* | Plays a hand-made 3D animation file, set manually | needs an import format (e.g. glTF) and voxelization |
 
-Interface *(proposed)*:
+Interface:
 
 ```python
 class Method(Protocol):
@@ -127,17 +128,17 @@ vectorscope to a line; the director should prefer stems with stereo width
 (a feature, below) or the delay-embedding variant.
 
 ## Director
-**Segmenting** *(proposed)*:
+**Segmenting:**
 - Start from the analysis phrases (8 bars from each section start and
   drop). Split further by energy: low energy keeps a method for a whole
   phrase or section; medium switches every 4 bars; high energy (drops)
-  every 2 bars or every bar. Boundaries always land on the grid.
+  every 2 bars or every bar *(tune)*. Boundaries always land on the grid.
 - **Per-beat changes happen inside a method**, not by switching methods
   (e.g. strobe alternating slices each beat, geometry swapping shapes on
   the beat). Per bar is the fastest the director switches methods.
 - Variable-tempo tracks (no grid): segment by sections, use raw beats.
 
-**Choosing a method** for a segment *(proposed)*:
+**Choosing a method** for a segment:
 - Inputs: phrase type, energy (per-bar mix energy, drums/bass on or off),
   mood, genre, position in the track, and what came before.
 - Each method's `suits` gives it a score for the segment; the director
@@ -158,7 +159,7 @@ end of the track.
 are, not one fixed rule:
 - **Into a drop: always a hard cut** on the downbeat.
 - Otherwise the director scores the **contrast** between the two segments
-  *(proposed inputs)*: the energy jump (dB, per-bar mix energy), drums or
+  from these inputs (weights: open question 1): the energy jump (dB, per-bar mix energy), drums or
   bass switching on/off, a section boundary vs. a split inside a phrase,
   and a change of phrase tag.
 - High contrast → a hard cut on the downbeat. Medium → a 1–2 beat
@@ -276,7 +277,7 @@ hatch. The API server also builds a `Music` for planning; it never
 touches audio there (the server doesn't read audio), so audio is
 decoded lazily, only when a method in the worker asks for samples.
 
-**Audio samples** — methods can read the actual waveforms *(proposed)*:
+**Audio samples** — methods can read the actual waveforms:
 - `music.samples(stem, t0, t1)` → `[n, 2]` float32 stereo at 44.1 kHz,
   for `vocals`, `drums`, `bass`, `other` (`stems/*.flac`) or `mix`
   (`source.<ext>`).
@@ -344,6 +345,17 @@ same at any rate:
    `model` last.
 
 ## Settled
+- **Method interface** as above: `id`, integer `version`, pydantic
+  `Params`, `suits`, `choose_params`, and range-independent `render`; no
+  state carried frame to frame.
+- **Segmenting** from the analysis phrases, split by energy (bar counts
+  *(tune)*); per bar is the fastest method switch, per-beat changes happen
+  inside a method; variable-tempo tracks segment by sections.
+- **Method choice** by `suits` scores and weighted random choice with a
+  per-segment seed, no immediate repeats, one palette per track.
+- **Transition contrast inputs:** energy jump, drums/bass on/off, section
+  boundary vs. split inside a phrase, phrase tag change (weights still
+  open).
 - Methods can read the stems' and mix's audio samples, not only features.
 - Planning runs in the API server (decision 0011).
 - Methods render at the display FPS (any whole number from 30 to 480,
