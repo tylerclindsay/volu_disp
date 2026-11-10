@@ -1,7 +1,9 @@
 # Wire protocol (host → drive node)
 
-**Current version: v2** (spec; not yet implemented — the firmware and
-`tools/udp_rainbow_sender.py` still speak v1, see the end of this file).
+**Current version: v2.** The host implements it in `volu_gen/output/`
+(`protocol.py` holds the constants and byte layout; `nodesim.py` the
+receive rules below). The firmware and `tools/udp_rainbow_sender.py` still
+speak v1 (see the end of this file).
 Decision record: `decisions/0002-protocol-v2.md`.
 
 ## Transport

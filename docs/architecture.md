@@ -601,7 +601,7 @@ re-measured on real renders):
 | `mapping/` | pixel → node/strip/index, validation; implemented (decision 0013) |
 | `animfile/` | animation file read/write; implemented (decision 0008) |
 | `generators/` | director, plan, methods (`generators.md`). Imported by the server (planning: director + each method's `choose_params`) and the worker (rendering), so no torch or other heavy imports at module level |
-| `output/` | packetizer, UDP sender |
+| `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI; implemented (brightness and power cap still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner) |
 | `server/` | API server (FastAPI, DB, queues, supervision) |

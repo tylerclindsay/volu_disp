@@ -42,9 +42,10 @@ receives data for its own strips.
 - **v2** (current spec): versioned header with a frame number; PIXELS write
   into a flat per-node buffer (several strips per packet); one broadcast
   SYNC latches all nodes together; nodes double-buffer.
-- The firmware (still a 2-strip test setup) and
-  `tools/udp_rainbow_sender.py` still implement **v1** until they are
-  updated.
+- gen_system implements v2 (`gen_system/backend/src/volu_gen/output/`);
+  `tools/fake_node.py` simulates v2 nodes. The firmware (still a 2-strip
+  test setup) and `tools/udp_rainbow_sender.py` still implement **v1**
+  until they are updated.
 
 ---
 

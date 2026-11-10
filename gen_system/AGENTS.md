@@ -22,8 +22,8 @@ Read first:
 
 ## Layout
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
-  README): `analysis/`, `animfile/`, `geometry/` and `mapping/`
-  (implemented), then `generators/`, `output/`, `engine/`, `worker/`, `server/`,
+  README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
+  `output/` (implemented), then `generators/`, `engine/`, `worker/`, `server/`,
   `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
@@ -135,8 +135,10 @@ Generators never know about nodes, strips, or packets.
 ### 5. Hardware-free development
 - The UI's 3D visualization doubles as a **virtual display**, driven by the
   same frames/geometry.
-- Build a **fake drive node** (`../tools/fake_node.py`): a UDP listener that
-  decodes the protocol and validates packets.
+- **Fake drive nodes** (`../tools/fake_node.py`, built on
+  `volu_gen.output.NodeSim`): UDP listeners that decode the protocol,
+  apply the node's receive rules, and report bad, late or incomplete
+  frames. Drive them with `python -m volu_gen.output <config> --loopback`.
 - Keep `../tools/udp_rainbow_sender.py`-style test patterns (solid colors,
   per-node/per-strip IDs, axis sweeps) for verifying mapping on hardware.
 

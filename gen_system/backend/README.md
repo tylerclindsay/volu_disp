@@ -8,7 +8,9 @@ Python package `volu_gen` (`src/volu_gen/`). Implemented so far:
 (`0008-animation-file-format.md`). **`geometry/`** — display config loading,
 pixel positions, geometry order and hash; **`mapping/`** — pixel → drive
 node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`).
-Still to come: generators, output (packetizer, UDP sender),
+**`output/`** — protocol v2, packetizer, UDP sender and a simulated node
+(`../../docs/protocol.md`).
+Still to come: generators,
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
@@ -40,9 +42,21 @@ uv run python -m volu_gen.analysis --all          # every stored track
   of any downbeat); `--clear-override` returns to the fit. Only the
   grid-dependent steps (phrases, per-bar energy) are re-run.
 
+## Test patterns and fake nodes
+```
+uv run python ../../tools/fake_node.py ../../config/displays/prototype.yaml --base-port 9000
+uv run python -m volu_gen.output ../../config/displays/prototype.yaml --loopback 9000 --pattern sweep
+```
+The first runs every drive node of the config as a fake node on
+`127.0.0.1:9000+k` and prints per-node FPS, packet rate and problems
+(bad, late, clipped, incomplete) each second. The second sends a test
+pattern (`nodes`, `rainbow`, `sweep`) over protocol v2; without
+`--loopback` it goes to the configured node IPs (`--bind` the display
+network interface's IP on Windows). Real nodes need v2 firmware.
+
 ## Tests
 ```
 uv run pytest
 ```
 Unit tests cover the pure-numpy parts (grid fit, windowed sections,
-phrases, mood normalization, waveform peaks, geometry, mapping) with synthetic inputs; no GPU or audio needed.
+phrases, mood normalization, waveform peaks, geometry, mapping, protocol test vectors, packetizer, loopback UDP) with synthetic inputs; no GPU or audio needed.
