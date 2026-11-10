@@ -71,6 +71,17 @@ The UI talks only to the API server.
 ### API server
 - FastAPI + uvicorn, one asyncio loop. Entry point (`volu serve`); spawns
   the engine and the worker, and respawns them if they die.
+- **Startup finds running children first.** Before spawning, the server
+  sends `hello` to each child's port with a short timeout; `hello`
+  replies carry the child's PID.
+  - **Engine answers:** the server adopts it (it may be playing out
+    after a server crash). With no process handle, crashes of an adopted
+    engine are caught by heartbeats only; it is respawned if they stop.
+  - **Worker answers:** the server kills it by PID and spawns a fresh
+    one, then re-queues the job it was running. Kill stays the only
+    recovery path for jobs.
+  - The startup `*.tmp` cleanup runs only once the old worker is gone, so
+    it never deletes a file still being written.
 - **SQLite** holds: tracks (key, name, original path, duration, analysis
   status, BPM, tempo mode), versions (draft/saved, track params, plan,
   generator version, fps, format version, geometry hash, file path),
@@ -92,7 +103,8 @@ The UI talks only to the API server.
   default render on import) or whose plan was made by another generator
   or method version (the new plan overwrites the stored one). Otherwise a
   render uses the stored plan unchanged, e.g. an FPS re-render (Main flows
-  6). It runs off the event loop (`asyncio.to_thread`) and is
+  6), except that before every render the server recomputes each
+  segment's `start` / `end` from its bars on the current grid. It runs off the event loop (`asyncio.to_thread`) and is
   deterministic. The worker only renders the plan it is given.
 - **Node detection:** pings each node's configured IP and pushes the online
   set to the engine. Moves into the engine once protocol type 3 (status)
@@ -109,6 +121,9 @@ The UI talks only to the API server.
   persistent state of its own.
 - Owns the **play queue** and **job queue** and their policies (priority,
   preloading the next track, cleanup of unreferenced animation files).
+- Owns the **engine mode** (`ui.md` → Engine modes): **Playback** plays
+  the queue, **Studio** the track open in Studio (Main flows 7). The
+  engine doesn't know the mode; it only gets the matching `load`s.
 
 ### Engine
 The real-time process, kept as small as possible. It receives file paths
@@ -119,7 +134,7 @@ timer resolution on Windows.
 
 | Thread | Does | Never does |
 |---|---|---|
-| Audio callback (PortAudio via `sounddevice`) | Copies samples from the preloaded buffer; records `(dac_time, sample_index)` per buffer; switches current → next at the exact sample (gapless) | I/O, allocation, long locks |
+| Audio callback (PortAudio via `sounddevice`) | Copies samples from the preloaded buffer; records `(dac_time, sample_index)` per buffer, where `sample_index` is one output counter that runs on across tracks; switches current → next at the exact sample (gapless) and records the counter value where `next` starts | I/O, allocation, long locks |
 | Frame | Each frame: read clock → pick frame index → take it from a decoded chunk → packetize → PIXELS to every online node (when armed) → one SYNC broadcast; write the preview frame (picked with `preview_offset`) to the preview slot | IPC, file loading |
 | Loader | Decodes audio and opens animation files into the `current` / `next` slots; for `swap_anim`, decodes the new file's playhead chunk before the swap (decision 0008) | Anything timed |
 | Prefetch | Keeps the playhead's animation chunk and the next one decoded (decision 0008); after a seek, decodes the new playhead's chunk first | Anything timed |
@@ -139,6 +154,16 @@ frame          = floor((heard_pos / sr + display_offset) × fps)
 `sr` is the output stream's sample rate: `sample_index` counts samples
 sent to the device, after any resampling to the device rate (decision
 0009), not samples of the source file.
+
+**Track boundaries.** The counter never resets, so one target time
+(`heard_pos / sr + offset`) covers a gapless track change. Each slot
+records the counter value where its audio starts; the frame thread takes
+the frame from whichever slot's range holds the target time, at its
+time from that slot's start. With a positive offset the lights reach the
+next track's first frames before its audio does; with a negative offset
+the previous track's last frames still show after its audio has ended.
+The preview does the same with `preview_offset`. Before the first track
+starts, or past the end of the last, the frame is black.
 
 The frame thread wakes at the **display FPS** (a UI setting: any whole
 number from 30 to 480; see Settled → Display FPS). A loaded animation is
@@ -189,7 +214,10 @@ power cap are applied here, adjustable live like the sync offset
 *(proposed, `generators.md` → Output and render job)*.
 
 **Slots.** `current` and `next` each hold decoded audio + an open animation
-file. `next` is preloaded so a track change is gapless. `swap_anim` replaces
+file. `next` is preloaded so a track change is gapless. After a change the
+old `current` becomes `previous` and keeps its animation open until both
+target times (display and preview) are past its end; only then does the
+engine close it and send `released`. `swap_anim` replaces
 the animation in `current` at the first frame after the loader has decoded
 the new file's playhead chunk, keeping audio and playhead.
 
@@ -222,7 +250,9 @@ to demucs).
 import work (`analyze` + its default render, FIFO; also "Re-render stale"
 and manual FPS re-renders). A track's default render goes to the front of
 import work when its `analyze` finishes, so it runs before the next
-track's `analyze`. Jobs are never preempted mid-run: a
+track's `analyze`. Queueing a track whose import isn't finished moves its
+remaining import work (`analyze` and its default render) up to "render
+for a queued track". Jobs are never preempted mid-run: a
 higher-priority job starts when the current job finishes, which is at most
 one track's analysis or one render (minutes per track on the large
 display, decision 0010).
@@ -271,7 +301,7 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
 
 | Message | Fields / meaning |
 |---|---|
-| `hello` | reply to the server's `hello`: engine instance id, current state |
+| `hello` | reply to the server's `hello`: engine instance id, PID, current state (loaded slots, position) |
 | `status` (~20 Hz; also the heartbeat) | state, track id, position (s), frame, actual fps, late frames, audio xruns |
 | `preview` | binary RGB frame, geometry order (at the preview FPS setting, latest-only) |
 | `track_started` / `track_ended` | track id |
@@ -282,7 +312,7 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
 `cancel{job_id}` (render jobs only, honored between chunks). Any other
 cancel = kill and respawn; the new worker reconnects and says `hello`.
 
-**Worker → server:** `hello`, `progress{job_id, stage, track, frac, eta}`,
+**Worker → server:** `hello{pid, job_id}`, `progress{job_id, stage, track, frac, eta}`,
 `done{job_id, result}`, `failed{job_id, error, traceback}`, `log{line}`.
 
 ## Main flows
@@ -293,7 +323,7 @@ cancel = kill and respawn; the new worker reconnects and says `hello`.
    goes through the same steps, which skip finished stages) → inserts the row, queues
    `analyze` → worker `progress` → UI jobs drawer → `done` → server updates the track,
    plans it with the default track params, and queues `render` with that
-   plan (creating the draft's version row) → `done` → server marks the
+   plan (creating the track's draft row) → `done` → server marks the
    draft rendered and sets it active → the next imported track's `analyze` starts (see
    Worker: tracks are processed in series).
 2. **Play the queue.** Server resolves each track's active version →
@@ -315,12 +345,14 @@ cancel = kill and respawn; the new worker reconnects and says `hello`.
    → `render` (top priority) with that plan writes
    `tracks/<key>/animations/<render-id>.anim` → server sends `swap_anim` → engine
    switches at the next frame and reports `released{old}` → server deletes
-   the old draft. **Every render gets a new filename**: Windows cannot
+   the old draft file, unless a saved version now uses it (Lifecycle). **Every render gets a new filename**: Windows cannot
    replace or delete a file that is open or memory-mapped.
-4. **Grid override.** `regrid` job → server re-plans (segments are
-   anchored by bar, so pinned ones keep their place) and notifies the UI
-   that analysis and plan changed (it refetches) → the user re-renders when
-   ready.
+4. **Grid override.** `regrid` job → server re-plans the draft (segments
+   are anchored by bar, so pinned ones keep their place) and notifies the
+   UI that analysis and plan changed (it refetches) → the user re-renders
+   when ready. Saved versions keep their plans; every version rendered on
+   the old grid is now stale (Lifecycle), and re-rendering one moves its
+   segments onto the new grid without re-planning.
 5. **Seek / pause / test patterns / calibration.** UI → server → one
    engine command each; the UI reflects only what `status` reports.
 6. **Display FPS change** (Settings, `decisions/0010-display-fps.md`).
@@ -335,17 +367,24 @@ cancel = kill and respawn; the new worker reconnects and says `hello`.
    "Re-render FPS mismatch", or a button on the active version in Studio's
    version bar; these run like import work. An FPS re-render covers only
    the active version. It uses the version's stored track params and plan
-   unchanged (re-planned first only if the generator or a method version
-   changed; API server above) and **replaces the version's file in place**:
+   unchanged (segment times are recomputed from bars on the current grid,
+   as for every render; re-planned first only if the generator or a method
+   version changed; API server above) and **replaces the version's file in place**:
    same version row, new render id; the old file is deleted as in
    Lifecycle below.
+7. **Enter / leave Studio** (`ui.md` → Engine modes). Entering: server
+   pauses, sends `clear_next`, and `load(current)` of the Studio track's
+   selected version, paused at the start. Studio doesn't keep a playhead
+   per track: opening a track, or switching to another, starts at 0.
+   Leaving: server reloads the queue's current track at the position it
+   was left at, **paused**, plus its `next`; the user presses play.
 
 ## Failure handling
 
 | Crash | Effect |
 |---|---|
 | UI | None. |
-| Server | Playback continues: the engine plays out current + next, then idles. Worker exits once the server has been gone past the heartbeat timeout. A restarted server reconnects to the engine, re-sends `configure`, and re-queues jobs that were running. |
+| Server | Playback continues: the engine plays out current + next, then idles. Worker exits once the server has been gone past the heartbeat timeout. A restarted server adopts the running engine (API server → Startup), re-sends `configure`, reconciles the queue from the engine's `hello` state, kills any surviving worker, and re-queues jobs that were running. |
 | Worker (e.g. OOM) | Job marked failed; worker respawned; queue continues. Atomic renames mean no partial files. |
 | Engine | Server respawns it, re-sends `configure`, reloads the current track **paused** at the last reported position, and the preloaded `next`. |
 
@@ -521,29 +560,38 @@ re-measured on real renders):
 | Large build (example) | 20,000 | 7.2 MB | ~1.7 GB | ~35–420 MB |
 
 **Lifecycle** (all in the DB; files only follow it):
-- **Draft:** each Studio or default render writes a new file. The track's
-  draft slot points at the newest; the previous draft file is deleted once
-  the engine has `released` it (immediately, if it isn't loaded).
+- **Draft:** one draft row per track, created by its first render. Each
+  Studio or default render gives that row a new file and render id; the
+  previous draft file is deleted once the engine has `released` it
+  (immediately, if it isn't loaded), unless a saved version uses it.
 - **FPS re-render** (Main flows 6): replaces the active version's file in
   place, whether that version is the draft or a saved one. The row keeps
   its params and plan and gets the new file, fps, and render id; the old
   file is deleted once `released`.
-- **Save draft as version:** relabels the DB row as a saved version. No
-  file copy.
-- **Active:** a pointer to one version; what the queue plays.
+- **Save draft as version:** creates a saved row with the draft's params,
+  plan, and file (no file copy). The two rows share the file until the
+  draft's next render gives the draft a new one.
+- **Active:** a pointer to one version, draft or saved; what the queue
+  plays. After import it is the draft, so Studio renders change what the
+  queue plays; to freeze a version, save it and set it active.
+- **Loaded file replaced:** whenever a render replaces the file of a
+  version the engine has loaded (a Studio render, a re-render of the
+  active version), the server sends `swap_anim`.
 - **Stale:** the file's geometry hash, generator version, any method
-  version in its plan, or format version differs from the current one. It
+  version in its plan, format version, or tempo override in effect
+  differs from the current one. It
   still plays if the pixel count matches, its fps is the display FPS, and
   the reader still supports its format version (decision 0008 rejects
-  unsupported ones); the UI flags it. Re-rendering a version stale by generator or method
-  version re-plans it first (API server above).
+  unsupported ones); the UI flags it. Re-rendering a version stale by
+  generator or method version re-plans it first (API server above); one
+  stale only by the grid keeps its plan.
 - **FPS mismatch:** the file's fps differs from the display FPS. **Not
   playable**: the queue skips it, Studio can't play it, and the engine
   refuses it. Cleared by an FPS re-render (Main flows 6), or by switching
   back to the file's rate.
 - **Cleanup:** the server deletes files that no DB row references and that
-  the engine doesn't have open. On startup it also removes leftover
-  `*.tmp` files.
+  the engine doesn't have open. On startup, once any surviving worker is
+  gone, it also removes leftover `*.tmp` files.
 
 ## Backend package layout
 | `volu_gen/` module | Purpose |
@@ -566,7 +614,20 @@ Former open questions, now part of the design above:
   `ROUTER` socket (IPC).
 - **Imports are processed in series**, one track at a time through analysis
   and its default render; no second worker, no parallelization (Worker).
-- **Unrendered queued tracks are skipped**, not waited for (Main flows 2).
+- **Unrendered queued tracks are skipped**, not waited for (Main flows 2);
+  queueing one still being imported promotes its import work (Worker).
+- **Plans are anchored by bars:** a grid override marks versions stale,
+  and re-rendering moves their segments onto the new grid without
+  re-planning, so a saved version keeps its look (Main flows 4).
+- **One draft row per track**; saving shares the file; active may be the
+  draft (Lifecycle).
+- **Server restart adopts the engine and replaces the worker**
+  (API server → Startup).
+- **Leaving Studio returns the queue paused** where it was; Studio keeps
+  no playhead per track (Main flows 7).
+- **Track changes are seamless for lights too:** one output sample
+  counter across tracks; frames come from whichever slot holds the offset
+  target time (Engine → Clock).
 - **Display FPS** (`decisions/0010-display-fps.md`): a Settings value,
   **any whole number from 30 to 480 (default 120)**. Animations render at
   the display FPS in effect when the render starts, and play only at

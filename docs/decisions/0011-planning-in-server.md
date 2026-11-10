@@ -25,7 +25,8 @@ behind another job waits for it to finish: up to one track's analysis
   render whose version has no plan yet or whose plan was made by another
   generator or method version (the new plan overwrites the stored one).
   Otherwise a render uses the stored plan unchanged, e.g. an FPS
-  re-render (decision 0010). The `render` job spec carries the plan.
+  re-render (decision 0010), apart from segment times, which are
+  recomputed from bars on the current grid before every render. The `render` job spec carries the plan.
 - The server stores track params and plan in the version's DB row; the
   `.anim` metadata carries a copy.
 

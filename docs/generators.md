@@ -194,7 +194,8 @@ are, not one fixed rule:
   overrides, and plans the rest around it.
   Its automatic fields are re-chosen as usual.
 - Segments are anchored by **bar numbers**, so they survive a grid
-  override; `start`/`end` are recomputed from the grid.
+  override; `start`/`end` are recomputed from the current grid before
+  every render, so a stored plan never renders on an old grid.
 - **Planning runs in the API server**, not as a worker job
   (`decisions/0011-planning-in-server.md`): it is pure Python over
   `analysis.json` and `features.npz` (milliseconds, no models), so Studio

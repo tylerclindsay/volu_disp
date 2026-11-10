@@ -76,7 +76,8 @@ Table of tracks: title, length, stems status, BPM, animation status
   (`decisions/0004-audio-analysis.md`).
 - Row actions: **Play now**, **Add to queue**, open in Studio.
 - "Stale" = the active version was rendered against a different geometry
-  hash, generator or method version, or file format version; it still
+  hash, generator or method version, file format version, or beat grid;
+  it still
   plays if its pixel count matches and its format version is still
   readable (`architecture.md` → Lifecycle). **Re-render stale** queues them all (like import work).
 - "FPS mismatch" = the active version was rendered at another rate than

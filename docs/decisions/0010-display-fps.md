@@ -36,7 +36,8 @@ both uneven, since rates no longer divide into each other.
     version in Studio), at import-work priority. An FPS re-render covers
     only the track's active version.
   - An FPS re-render uses the version's stored track params and plan
-    unchanged (plans don't depend on the FPS, `../generators.md` → Plan),
+    unchanged (segment times aside, recomputed from bars on the current
+    grid as for every render) (plans don't depend on the FPS, `../generators.md` → Plan),
     so it looks the same at the new rate. If the generator or a method
     version changed since, the server re-plans first and the new plan
     overwrites the stored one. The re-render replaces the version's file
