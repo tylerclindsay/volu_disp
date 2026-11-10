@@ -23,9 +23,8 @@ engine plays it. The file must:
 
 ## Decision
 **A custom single-file container: frames in independently compressed
-chunks of `chunk_frames` frames (default 120 = 1 s at 120 FPS; the render
-job passes the file's fps so chunks stay 1 s at 60 / 240 FPS, decision
-0010), each
+chunks of `chunk_frames` frames (default: the file's fps, so chunks are
+1 s at any rate from 30 to 480 FPS, decision 0010), each
 optionally temporal-delta filtered and compressed with zstd, with a chunk
 index at the end of the file.** Lossless.
 

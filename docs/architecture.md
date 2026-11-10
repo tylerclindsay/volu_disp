@@ -12,7 +12,8 @@ current default until decided.
 Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
 `decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`,
-`decisions/0009-audio-output-api.md`.
+`decisions/0009-audio-output-api.md`, `decisions/0010-display-fps.md`,
+`decisions/0011-planning-in-server.md`, `decisions/0012-stem-features.md`.
 
 ---
 
@@ -26,7 +27,8 @@ Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
   backend reports. A UI freeze, reload, or crash never affects audio or
   frames.
 - **One writer per store.** Every file or database has exactly one process
-  that writes it.
+  that writes it. (The server also deletes files under `tracks/` for
+  cleanup; it never writes them after import.)
 - **Real-time threads never block on anything** — no IPC, no file I/O, no
   waiting on other processes.
 
@@ -53,13 +55,14 @@ flowchart LR
     WRK -->|"writes (tmp + atomic rename)"| DATA
     DATA -->|"reads: audio, anim files"| ENG
     DATA -.->|"reads: analysis, features, peaks"| SRV
+    SRV -.->|"import; cleanup deletes"| DATA
     ENG -->|"UDP PIXELS + SYNC"| NODES
     SRV -.->|"ping (node detection)"| NODES
 ```
 
 | Process | Role | Writes | Never does |
 |---|---|---|---|
-| API server | Coordinator; the only holder of persistent state; plans renders | SQLite; new track dirs on import | Timing, model inference, rendering frames |
+| API server | Coordinator; the only holder of persistent state; plans renders | SQLite; new track dirs on import; deletes unreferenced animation files, leftover `*.tmp` files, and orphaned track dirs (on request) | Timing, model inference, rendering frames |
 | Engine | Plays audio, sends frames | nothing | DB access, HTTP, models |
 | Worker | Runs GPU/batch jobs | `data/tracks/` (everything after import) | DB access, playback |
 
@@ -68,15 +71,16 @@ The UI talks only to the API server.
 ### API server
 - FastAPI + uvicorn, one asyncio loop. Entry point (`volu serve`); spawns
   the engine and the worker, and respawns them if they die.
-- **SQLite** holds: tracks (key, name, original path, analysis status, BPM), versions
-  (draft/saved, track params, plan, generator version, geometry hash, file
-  path),
+- **SQLite** holds: tracks (key, name, original path, duration, analysis
+  status, BPM, tempo mode), versions (draft/saved, track params, plan,
+  generator version, fps, format version, geometry hash, file path),
   presets, settings, the play queue, and the job queue. The server is its
   only writer.
 - **Imports tracks** (see Storage layout → Import): copies uploaded or
   scanned audio into a new track directory, then hands it to the worker.
 - Loads and validates the active display config (no overlaps, full
-  coverage, ≤ 64 strips per node) and computes the **geometry hash**. It
+  coverage, ≤ 64 strips per node, longest strip fits the display FPS) and
+  computes the **geometry hash**. It
   passes the config path and hash to the engine and worker, so all three
   agree on geometry.
 - **Plans renders** (`generators.md` → Plan, `decisions/0011-planning-in-server.md`):
@@ -84,9 +88,12 @@ The UI talks only to the API server.
   `features.npz`, track params, and the user's pinned instance edits into a
   plan. Planning is pure Python with no models (milliseconds), so it runs
   on demand: on every track-param or instance edit, after a grid
-  override, and before each render. It runs off the event loop
-  (`asyncio.to_thread`) and is deterministic. The worker only renders the
-  plan it is given.
+  override, and before a render whose version has no plan yet (the
+  default render on import) or whose plan was made by another generator
+  or method version (the new plan overwrites the stored one). Otherwise a
+  render uses the stored plan unchanged, e.g. an FPS re-render (Main flows
+  6). It runs off the event loop (`asyncio.to_thread`) and is
+  deterministic. The worker only renders the plan it is given.
 - **Node detection:** pings each node's configured IP and pushes the online
   set to the engine. Moves into the engine once protocol type 3 (status)
   exists.
@@ -114,8 +121,8 @@ timer resolution on Windows.
 |---|---|---|
 | Audio callback (PortAudio via `sounddevice`) | Copies samples from the preloaded buffer; records `(dac_time, sample_index)` per buffer; switches current → next at the exact sample (gapless) | I/O, allocation, long locks |
 | Frame | Each frame: read clock → pick frame index → take it from a decoded chunk → packetize → PIXELS to every node → one SYNC broadcast; write the preview frame (picked with `preview_offset`) to the preview slot | IPC, file loading |
-| Loader | Decodes audio and opens animation files into the `current` / `next` slots | Anything timed |
-| Prefetch | Keeps the playhead's animation chunk and the next one decoded (decision 0008); after a seek or `swap_anim`, decodes the new playhead's chunk first | Anything timed |
+| Loader | Decodes audio and opens animation files into the `current` / `next` slots; for `swap_anim`, decodes the new file's playhead chunk before the swap (decision 0008) | Anything timed |
+| Prefetch | Keeps the playhead's animation chunk and the next one decoded (decision 0008); after a seek, decodes the new playhead's chunk first | Anything timed |
 | Control | IPC with the server; publishes status (~20 Hz) and preview (preview FPS setting, ≤ display FPS) from shared slots | Block the real-time threads |
 
 Real-time threads share state with the control thread only through small
@@ -126,11 +133,18 @@ PortAudio's DAC timestamps:
 
 ```
 heard_pos(now) = sample_index + (now − dac_time) × sr      # sample at the speaker now
-frame          = floor((heard_pos / sr + display_offset) × file_fps)
+frame          = floor((heard_pos / sr + display_offset) × fps)
 ```
 
-The frame thread wakes at the **display FPS** (a UI setting: 60, 120, or
-240; see Display FPS below). `file_fps` is the loaded animation's own rate.
+`sr` is the output stream's sample rate: `sample_index` counts samples
+sent to the device, after any resampling to the device rate (decision
+0009), not samples of the source file.
+
+The frame thread wakes at the **display FPS** (a UI setting: any whole
+number from 30 to 480; see Settled → Display FPS). A loaded animation is
+always at that rate: the engine refuses to `load` or `swap_anim` a file
+whose fps differs, and on a `configure` with a new display FPS it stops
+and unloads any animation at the old rate.
 
 - `display_offset` is the **A/V sync offset**, a user setting in ms
   (positive = lights earlier). It covers audio output latency, network and
@@ -143,17 +157,21 @@ The frame thread wakes at the **display FPS** (a UI setting: 60, 120, or
   - **Stored per audio device + output mode** (e.g. WASAPI shared vs.
     exclusive), since their latency differs; switching device switches
     offset.
-  - Resolution is finer than a frame (8.3 ms at 120 FPS, 4.2 ms at 240): the offset shifts
-    which frame is picked, so small nudges take effect at frame boundaries.
+  - Resolution is finer than a frame (33 ms at 30 FPS, 8.3 ms at 120,
+    2.1 ms at 480): the offset shifts which frame is picked, so small
+    nudges take effect at frame boundaries.
 - `preview_offset` is the same idea for the UI preview, which has its own
   path (ZeroMQ → WebSocket → browser → monitor). The frame thread picks the
   preview frame separately at `heard_pos / sr + preview_offset`, so
   the hardware offset never makes the preview run early or late.
-- A file rendered **above** the display FPS (e.g. 120 on a 60 FPS display)
-  plays by picking the current frame at each wake, i.e. dropping frames;
-  no re-render needed. A file rendered **below** it (e.g. 120 on a 240 FPS
-  display) holds each frame for two wakes: it plays, but only at its own
-  rate, and is flagged stale until re-rendered.
+- Frames are never dropped, held, or resampled to fit another rate: a file
+  at another fps is not playable until re-rendered (Main flows 6). The one
+  hold is a late frame: if the playhead's chunk isn't decoded yet (just
+  after a seek), the frame thread repeats the last frame and counts it in
+  `status` (decision 0008).
+- At high rates the 1 ms timer resolution is a large share of the frame
+  (2.08 ms at 480 FPS). Measure wake jitter there; use a high-resolution
+  waitable timer or spin the last part of the wait if needed.
 - The protocol sender's frame counter is separate from the frame index and
   keeps incrementing across seeks, track changes, and test patterns.
 - Smooth the clock (e.g. a filter over the anchors) only if measured jitter
@@ -166,11 +184,14 @@ use the same output path as playback.
 
 **Output.** Mapping + packetizer → UDP sender (`protocol.md`, v2). When
 output is disarmed, frames are still produced and previewed but not sent.
-Armed output goes only to nodes in the online set.
+Armed output goes only to nodes in the online set. Global brightness and a
+power cap are applied here, adjustable live like the sync offset
+*(proposed, `generators.md` → Output and render job)*.
 
 **Slots.** `current` and `next` each hold decoded audio + an open animation
 file. `next` is preloaded so a track change is gapless. `swap_anim` replaces
-the animation in `current` at the next frame, keeping audio and playhead.
+the animation in `current` at the first frame after the loader has decoded
+the new file's playhead chunk, keeping audio and playhead.
 
 ### Worker
 - One process, one job at a time, below-normal priority. Respects the GPU
@@ -186,7 +207,7 @@ the animation in `current` at the next frame, keeping audio and playhead.
 |---|---|---|
 | `analyze` | one track, stages, force set | sha, BPM/grid summary, status |
 | `regrid` | sha, BPM / grid-offset override | updated phrases, events, bars (CPU, seconds) |
-| `render` | sha, generator id + track params, plan (made by the server, `generators.md`), fps (the display FPS when queued), geometry hash, output path | anim path, frame count, generator version |
+| `render` | sha, generator id + track params, plan (made by the server, `generators.md`), fps (the display FPS when the job starts), geometry hash, output path | anim path, frame count, generator version |
 
 **Tracks are processed in series.** A multi-file upload or folder scan
 queues one `analyze` job per track, and each track gets its default
@@ -196,10 +217,12 @@ parallel processing. Cost: each track loads and unloads every model itself
 instead of sharing one load across a batch (seconds per stage, small next
 to demucs).
 
-**Priority:** Studio render > render for a queued track > import work
-(`analyze` + its default render, FIFO). Jobs are never preempted mid-run:
-a higher-priority job starts when the current job finishes, which is at
-most one track's analysis.
+**Priority:** Studio render and `regrid` > render for a queued track >
+import work (`analyze` + its default render, FIFO; also "Re-render stale"
+and manual FPS re-renders). Jobs are never preempted mid-run: a
+higher-priority job starts when the current job finishes, which is at most
+one track's analysis or one render (minutes per track on the large
+display, decision 0010).
 
 ## IPC
 ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
@@ -233,7 +256,7 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
 | Message | Fields / meaning |
 |---|---|
 | `hello` | sent on connect; the engine replies `hello` |
-| `configure` | display config path, geometry hash, audio device, display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes. Full snapshot; sent on connect and on any change |
+| `configure` | display config path, geometry hash, audio device + output mode (shared/exclusive), display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes, brightness + power cap *(proposed)*. Full snapshot; sent on connect and on any change |
 | `load` | slot (`current`/`next`), track id, audio path, anim path, start time |
 | `swap_anim` | anim path; replace current animation at the playhead |
 | `play` / `pause` / `stop` / `seek{t}` | transport |
@@ -272,7 +295,8 @@ and respawn; the new worker reconnects and says `hello`.
    engine switches to `next` at the sample and emits `track_ended` /
    `track_started` → server pops the queue and sends the new `load(next)`.
    **Unrendered tracks are skipped**, never waited for: `next` is the first
-   queued track that has an active version. Skipped tracks keep their place
+   queued track whose active version is playable (rendered at the display
+   FPS). Skipped tracks keep their place
    at the front of the queue and keep rendering; if one becomes ready
    before the current track ends, the server replaces `next` with it
    (`clear_next` + `load(next)`).
@@ -290,12 +314,22 @@ and respawn; the new worker reconnects and says `hello`.
    ready.
 5. **Seek / pause / test patterns / calibration.** UI → server → one
    engine command each; the UI reflects only what `status` reports.
-6. **Display FPS change** (Settings). Server stores it and sends
-   `configure`; the engine wakes at the new rate from the next frame. New
-   renders use the new rate. Active versions rendered below it are flagged
-   stale (they play at their own rate); the Library offers **Re-render
-   stale** as a bulk action, queued like import work. Nothing re-renders
-   automatically *(proposed)*.
+6. **Display FPS change** (Settings, `decisions/0010-display-fps.md`).
+   The UI confirms first, showing how many versions become unplayable →
+   server sends `stop`, stores the rate, and sends `configure` → the
+   engine wakes at the new rate (test patterns and calibration keep
+   working; no animation is loaded). Every version whose fps differs is
+   now unplayable. The server cancels and re-queues a running render, and
+   queues an **FPS re-render** of the active version of every track in the
+   play queue, at "render for a queued track" priority. Other tracks are
+   re-rendered manually: a Library row action, a Library bulk
+   "Re-render FPS mismatch", or a button on the active version in Studio's
+   version bar; these run like import work. An FPS re-render covers only
+   the active version. It uses the version's stored track params and plan
+   unchanged (re-planned first only if the generator or a method version
+   changed; API server above) and **replaces the version's file in place**:
+   same version row, new render id; the old file is deleted as in
+   Lifecycle below.
 
 ## Failure handling
 
@@ -323,7 +357,7 @@ Distinct, separately testable layers (from `gen_system/AGENTS.md`):
 | Path under `data/` | Contents | Writer |
 |---|---|---|
 | `volu.db` | SQLite: tracks, versions, presets, settings, queues | server |
-| `tracks/<key>/` | Per-track data: source audio, stems, analysis, peaks, animations (below) | server creates it on import; worker after that |
+| `tracks/<key>/` | Per-track data: source audio, stems, analysis, peaks, features, animations (below) | server creates it on import; worker after that (the server only deletes) |
 
 **`<key>`** is the first 16 hex digits of the SHA-256 of the imported
 file's bytes. Importing the same file again (under any name or path) finds
@@ -357,9 +391,11 @@ flowchart LR
     STEMS["stems/*.flac"]
     AJ["analysis.json"]
     PK["peaks.npz"]
+    FT["features.npz"]
     ANIM["animations/‹render-id›.anim"]
     ENG["engine"]
     UI["UI (via server)"]
+    PLAN["planning (server)"]
 
     ORIG -->|"import (copy)"| SRC
     SRC -->|"demucs"| STEMS
@@ -367,8 +403,15 @@ flowchart LR
     STEMS -->|"analysis models"| AJ
     SRC -->|"peaks stage"| PK
     STEMS -->|"peaks stage"| PK
-    STEMS -->|"render job + params"| ANIM
-    AJ -->|"render job + params"| ANIM
+    SRC -->|"features stage"| FT
+    STEMS -->|"features stage"| FT
+    AJ --> PLAN
+    FT --> PLAN
+    PLAN -->|"plan"| ANIM
+    SRC -->|"render job (samples)"| ANIM
+    STEMS -->|"render job (samples)"| ANIM
+    AJ -->|"render job"| ANIM
+    FT -->|"render job"| ANIM
     SRC -->|"audio playback"| ENG
     ANIM -->|"frames"| ENG
     AJ --> UI
@@ -390,7 +433,9 @@ Implemented by `TrackDir` and `import_track` (`analysis/track.py`).
   it came from; informational only, never read back).
 - Sources: browser upload (**Add files**), a folder path typed in the UI
   (**Scan folder**, imports every audio file under it), or the CLI
-  (`python -m volu_gen.analysis <files or folders>`).
+  (`python -m volu_gen.analysis <files or folders>`). The CLI is dev-only:
+  it bypasses the server, so its tracks get no DB row and show up in
+  Settings as orphaned track directories.
 
 **Removing a track** from the library *(proposed)*: asks whether to also
 delete its directory. Keeping it makes re-adding the same file instant (no
@@ -405,7 +450,7 @@ size and can delete them.
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
-| `features.npz` *(proposed, not yet built)* | Stem features for generators (kick/snare onsets, envelopes, band spectrum) at a fixed rate, independent of FPS (`generators.md` → Inputs) | a future CPU stage | — |
+| `features.npz` *(proposed, not yet built)* | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / hat from the drums stem; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~11 MB raw for a 6.6-min track (est.) |
 | `check/` | Listening aids: `clicks.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
 - The decoded mix is **not** stored: `source.<ext>` is decoded whenever
@@ -422,7 +467,8 @@ size and can delete them.
   - An `analysis.json` of an older compatible `version` keeps model outputs
     and drops only the derived keys; any other version is rebuilt.
   - `peaks.npz` is recomputed when its `version` differs or any stem file is
-    newer than it.
+    newer than it. `features.npz` will follow the same rule (decision
+    0012); neither re-runs on a grid override or an FPS change.
 
 **`animations/` — rendered animations.**
 One file per render: `animations/<render-id>.anim`. Unlike the files
@@ -434,9 +480,9 @@ the same directory and renames it when the job finishes.
 
 **What a file holds.** Format: `decisions/0008-animation-file-format.md`.
 A single file: header + JSON metadata, then frames in independently
-zstd-compressed chunks of 1 s (`chunk_frames` = the file's fps: 60, 120,
-or 240 frames; each chunk optionally temporal-delta filtered), then a
-chunk index and footer.
+zstd-compressed chunks of 1 s (`chunk_frames` = the file's fps, 30–480
+frames; each chunk optionally temporal-delta filtered), then a chunk
+index and footer.
 Lossless; any frame decodes from the start of its chunk. It holds:
 
 | Part | Contents |
@@ -452,7 +498,7 @@ Not in the file:
   therefore covers only pixel positions and order, not `drive_nodes`.
 
 **Size** (uncompressed, `P × 3 × fps` bytes/s; shown at the default
-120 FPS: 240 doubles it, 60 halves it; compressed from synthetic
+120 FPS, linear in the rate: 480 is 4×, 30 is ¼; compressed from synthetic
 benchmarks in decision 0008, 4–50× depending on content, to be
 re-measured on real renders):
 
@@ -462,15 +508,25 @@ re-measured on real renders):
 | Large build (example) | 20,000 | 7.2 MB | ~1.7 GB | ~35–420 MB |
 
 **Lifecycle** (all in the DB; files only follow it):
-- **Draft:** each render writes a new file. The track's draft slot points
-  at the newest; the previous draft file is deleted once the engine has
-  `released` it (immediately, if it isn't loaded).
+- **Draft:** each Studio or default render writes a new file. The track's
+  draft slot points at the newest; the previous draft file is deleted once
+  the engine has `released` it (immediately, if it isn't loaded).
+- **FPS re-render** (Main flows 6): replaces the active version's file in
+  place, whether that version is the draft or a saved one. The row keeps
+  its params and plan and gets the new file, fps, and render id; the old
+  file is deleted once `released`.
 - **Save draft as version:** relabels the DB row as a saved version. No
   file copy.
 - **Active:** a pointer to one version; what the queue plays.
-- **Stale:** the file's geometry hash, generator version, or format
-  version differs from the current one, or its fps is below the display
-  FPS. It still plays if the pixel count matches; the UI flags it.
+- **Stale:** the file's geometry hash, generator version, any method
+  version in its plan, or format version differs from the current one. It
+  still plays if the pixel count matches and its fps is the display FPS;
+  the UI flags it. Re-rendering a version stale by generator or method
+  version re-plans it first (API server above).
+- **FPS mismatch:** the file's fps differs from the display FPS. **Not
+  playable**: the queue skips it, Studio can't play it, and the engine
+  refuses it. Cleared by an FPS re-render (Main flows 6), or by switching
+  back to the file's rate.
 - **Cleanup:** the server deletes files that no DB row references and that
   the engine doesn't have open. On startup it also removes leftover
   `*.tmp` files.
@@ -492,25 +548,29 @@ re-measured on real renders):
 ## Settled
 Former open questions, now part of the design above:
 - **Playback across a server restart:** yes. The engine keeps playing
-  (Failure handling); a restarted server reconnects through its `Listener`.
+  (Failure handling); a restarted server reconnects to the engine's bound
+  `ROUTER` socket (IPC).
 - **Imports are processed in series**, one track at a time through analysis
   and its default render; no second worker, no parallelization (Worker).
 - **Unrendered queued tracks are skipped**, not waited for (Main flows 2).
-- **Display FPS** (`decisions/0010-display-fps.md`): a Settings choice of
-  **60, 120 (default), or 240**. Animations render at the display FPS set
-  when the render is queued. Lowering it needs no re-render (frames are
-  dropped at playback); raising it does (Engine → Clock; Main flows 6).
+- **Display FPS** (`decisions/0010-display-fps.md`): a Settings value,
+  **any whole number from 30 to 480 (default 120)**. Animations render at
+  the display FPS in effect when the render starts, and play only at
+  their own rate: after a change, every render at another rate is
+  unplayable until re-rendered (Engine → Clock; Main flows 6; Lifecycle).
   The longest strip must fit the frame time: at ≈ 30 µs per pixel, about
-  550 / 270 / 135 pixels per strip at 60 / 120 / 240 FPS; Settings refuses
-  a rate the display config can't meet.
+  1,100 / 270 / 65 pixels per strip at 30 / 120 / 480 FPS; Settings
+  refuses a rate the display config can't meet.
 - **Planning runs in the API server**, not as a worker job
   (`decisions/0011-planning-in-server.md`; API server above).
 - **Preview rate: up to the display FPS.** The preview FPS setting
   (≤ display FPS) is set by the user to the UI monitor's refresh rate;
-  frames beyond it would never be drawn. Cost at 120 FPS (240 doubles it):
+  frames beyond it would never be drawn. Cost at 120 FPS (linear in the
+  rate):
   - Data: prototype 2.9 KB/frame ≈ 350 KB/s; 20k pixels 60 KB/frame
-    ≈ 7.2 MB/s. Trivial on localhost; ~58 Mbit/s to a browser on another
-    machine (fine wired, marginal on Wi-Fi).
+    ≈ 7.2 MB/s. Trivial on localhost, where v1 runs the browser (`ui.md`).
+    A browser on another machine would need ~58 Mbit/s (fine wired,
+    marginal on Wi-Fi).
   - Browser: one 60 KB color-buffer upload per frame; bloom is the
     heaviest part and wants a discrete GPU at 20k pixels.
   - Engine: preview sends share the GIL with the frame thread. **Measure**

@@ -55,13 +55,14 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 - Drive nodes use static IPs `192.168.1.(100 + NODE_ID)`, OTA updates via
   espota, and blank their LEDs after `DATA_TIMEOUT_MS` (3 s) without valid
   packets.
-- **Display FPS** is a host UI setting: **60, 120 (default), or 240**
-  (`docs/decisions/0010-display-fps.md`). Animations render at it; don't
-  assume 120.
+- **Display FPS** is a host UI setting: **any whole number from 30 to 480,
+  default 120** (`docs/decisions/0010-display-fps.md`). Animations render
+  at it and play only at it: after a change, every animation is unplayable
+  until re-rendered. Don't assume 120.
 - WS2811 timing is ≈ 30 µs/pixel per strip. A frame takes roughly
-  `longest_strip × 30 µs` (+ reset), so strips are capped at **~550 / ~270 /
-  ~135 pixels** at 60 / 120 / 240 FPS. Validate the chosen FPS against the
-  longest strip.
+  `longest_strip × 30 µs` (+ reset), so strips are capped at **~1,100 /
+  ~270 / ~65 pixels** at 30 / 120 / 480 FPS. Validate the chosen FPS
+  against the longest strip.
 
 ## Display geometry
 - **Size is not fixed.** A small prototype is being built now; a much larger

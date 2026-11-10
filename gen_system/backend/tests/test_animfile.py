@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import zstandard as zstd
 
-from volu_gen.animfile import (CHUNK_FRAMES, FILTER_DELTA, FILTER_NONE, FORMAT_VERSION,
+from volu_gen.animfile import (FILTER_DELTA, FILTER_NONE, FORMAT_VERSION,
                                AnimFormatError, AnimReader, AnimWriter)
 from volu_gen.animfile import tmp_path as anim_tmp_path
 from volu_gen.animfile.format import FOOTER, HEADER, INDEX_ENTRY, delta_decode, delta_encode
@@ -33,7 +33,7 @@ def noise(n: int, P: int, seed: int = 0) -> np.ndarray:
     return np.random.default_rng(seed).integers(0, 256, (n, P, 3), dtype=np.uint8)
 
 
-def write(path, frames, chunk_frames=CHUNK_FRAMES, **meta):
+def write(path, frames, chunk_frames=None, **meta):
     """Write frames to path with meta_for metadata (extra keys from meta); returns path."""
     with AnimWriter(path, meta_for(frames.shape[1], len(frames), **meta),
                     chunk_frames=chunk_frames) as w:
@@ -69,6 +69,14 @@ def test_round_trip_and_short_last_chunk(tmp_path, n):
         with pytest.raises(IndexError):
             r.chunk(r.chunk_count)
     assert not tmp_path_exists(p)
+
+
+@pytest.mark.parametrize("fps", [30, 97, 480])
+def test_chunks_default_to_one_second(tmp_path, fps):
+    """Without chunk_frames, a chunk holds fps frames (1 s at the file's rate)."""
+    p = write(tmp_path / "a.anim", smooth(fps + 1, 3), fps=fps)
+    with AnimReader(p) as r:
+        assert r.meta["chunk_frames"] == fps and r.chunk_count == 2
 
 
 def tmp_path_exists(p):

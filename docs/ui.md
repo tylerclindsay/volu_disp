@@ -65,7 +65,7 @@ One audio device and one display, so the engine is in one mode at a time:
 
 ### Library
 Table of tracks: title, length, stems status, BPM, animation status
-(none / rendering / ready / stale), actions.
+(none / rendering / ready / stale / FPS mismatch), actions.
 - **Add files** (upload from the browser) / **Scan folder** (type a folder
   path; every audio file under it is imported). Import **copies** each file
   into the track's own data directory; the original is not used afterwards
@@ -76,8 +76,15 @@ Table of tracks: title, length, stems status, BPM, animation status
   (`decisions/0004-audio-analysis.md`).
 - Row actions: **Play now**, **Add to queue**, open in Studio.
 - "Stale" = the active version was rendered against a different geometry
-  hash or generator version, or below the current display FPS.
-  **Re-render stale** queues them all (like import work).
+  hash, generator or method version, or file format version; it still
+  plays. **Re-render stale** queues them all (like import work).
+- "FPS mismatch" = the active version was rendered at another rate than
+  the display FPS; it **doesn't play** until re-rendered. After a display
+  FPS change, tracks in the play queue are re-rendered automatically
+  (Settings); the row shows that progress. Others are re-rendered by hand:
+  a row action, or **Re-render FPS mismatch** for all of them (like import
+  work). Either re-renders the active version in place with its params
+  and plan (`architecture.md` → Main flows 6).
 
 ### Player
 ```
@@ -95,7 +102,8 @@ Table of tracks: title, length, stems status, BPM, animation status
 - **Queue:** ordered list, drag to reorder, remove. No playlists. Tracks
   play end to end; when one ends the next starts immediately (no fades).
 - A queued track plays its **active** version. A track without one is
-  rendered first; its entry shows progress, and it is skipped if it isn't
+  rendered first (so is one whose active version is at another rate than
+  the display FPS); its entry shows progress, and it is skipped if it isn't
   ready when reached: it stays at the front of the queue and plays once
   ready (`architecture.md`, Main flows).
 - 3D preview: orbit, view presets (front/side/top/iso), slice-isolate
@@ -139,7 +147,11 @@ Table of tracks: title, length, stems status, BPM, animation status
 - **Render loop:** edit params (nothing renders automatically) → **Render**
   (Ctrl+Enter) re-renders the **entire track** → while rendering, playback
   continues on the old frames → when done, playback resumes at the same
-  playhead on the new frames.
+  playhead on the new frames. A draft or version at another rate than the
+  display FPS shows "rendered at N FPS: render to play" and doesn't play.
+  On the active version, the version bar offers an FPS re-render: it
+  re-renders that version in place with its params and plan, like the
+  Library's action.
 - **Versions:** one **Draft** slot per track, overwritten by every render.
   **Save draft as version** keeps it with its parameters and plan
   (including instance edits); **Set active** picks what the queue plays.
@@ -148,8 +160,9 @@ Table of tracks: title, length, stems status, BPM, animation status
   tracks (instance edits are track-specific and not in presets). Undo
   covers track and instance param edits.
 - If full renders get too slow on the large display, add a "draft quality"
-  option (e.g. render at a quarter of the display FPS) before reaching for
-  the loop preview.
+  option (cheaper method settings, not a lower FPS: a render at another
+  rate than the display FPS doesn't play) before reaching for the loop
+  preview.
 
 ### Display
 - 3D view colored by drive node section (optionally by strip). Hover a pixel
@@ -160,12 +173,18 @@ Table of tracks: title, length, stems status, BPM, animation status
   display offset (see Sync).
 
 ### Settings
-- **Display FPS: 60, 120 (default), or 240** (`decisions/0010-display-fps.md`).
-  Renders use it; lowering it plays existing renders by dropping frames,
-  raising it flags renders below the new rate as stale (Library →
-  **Re-render stale**). A rate the longest strip can't meet is refused
-  (≈ 550 / 270 / 135 pixels per strip at 60 / 120 / 240 FPS).
+- **Display FPS: any whole number from 30 to 480, default 120**
+  (`decisions/0010-display-fps.md`). Renders use it, and a render plays
+  only at its own rate. Changing it asks for confirmation first, showing
+  how many versions become unplayable and the estimated re-render time;
+  on confirm, playback stops and the active version of every track in the
+  play queue is queued for re-render at the new rate. Other tracks are
+  re-rendered from the Library or Studio (`architecture.md` → Main flows
+  6). A rate the
+  longest strip can't meet is refused (≈ 1,100 / 270 / 65 pixels per
+  strip at 30 / 120 / 480 FPS); the field shows the display's maximum.
 - Preview FPS (≤ display FPS): set to the UI monitor's refresh rate.
+  Lowering the display FPS below it lowers it too.
 - Audio output device and mode; display and preview offsets (same values as
   the Sync popover).
 - Network interface for the display.

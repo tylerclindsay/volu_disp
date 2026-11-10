@@ -20,7 +20,6 @@ FORMAT_VERSION = 1
 MAGIC = b"VOLUANIM"
 END_MAGIC = b"VOLUEND1"
 CODEC = "zstd"
-CHUNK_FRAMES = 120  # 1 s at 120 FPS
 ZSTD_LEVEL = 3
 
 FILTER_NONE = 0
@@ -80,16 +79,17 @@ class AnimWriter:
                 w.write(frames)
     """
 
-    def __init__(self, path: Path, meta: dict, *, chunk_frames: int = CHUNK_FRAMES,
+    def __init__(self, path: Path, meta: dict, *, chunk_frames: int | None = None,
                  level: int = ZSTD_LEVEL):
         """Validate meta, open <path>.tmp and write the header and metadata.
-        chunk_frames is stored in the file; level (zstd) only affects size
+        chunk_frames is stored in the file and defaults to the file's fps
+        (1 s chunks, decision 0010); level (zstd) only affects size
         and encode time. Raises ValueError on missing or invalid meta."""
         missing = [k for k in REQUIRED_META if k not in meta]
         if missing:
             raise ValueError(f"meta is missing {missing}")
         self.path = Path(path)
-        self.meta = {**meta, "codec": CODEC, "chunk_frames": int(chunk_frames)}
+        self.meta = {**meta, "codec": CODEC, "chunk_frames": int(chunk_frames or meta["fps"])}
         self.meta.setdefault("created", datetime.now(timezone.utc).isoformat(timespec="seconds"))
         _check_meta(self.meta)
         self.pixel_count = self.meta["pixel_count"]

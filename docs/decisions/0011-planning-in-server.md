@@ -11,8 +11,8 @@ user edits instance params on it. Every track-param or instance edit, and
 every grid override, changes the plan.
 
 The worker runs one job at a time and never preempts: a Studio job queued
-behind an import's analysis waits up to one track's analysis (tens of
-seconds).
+behind another job waits for it to finish: up to one track's analysis
+(tens of seconds) or one render (minutes per track on the large display).
 
 ## Decision
 **The API server makes plans in-process; the worker only renders.**
@@ -21,8 +21,11 @@ seconds).
   milliseconds. The server runs it off the event loop
   (`asyncio.to_thread`).
 - It runs on demand: on every track-param or instance edit (the HTTP
-  response carries the new plan), after a grid override, and before each
-  render. The `render` job spec carries the plan.
+  response carries the new plan), after a grid override, and before a
+  render whose version has no plan yet or whose plan was made by another
+  generator or method version (the new plan overwrites the stored one).
+  Otherwise a render uses the stored plan unchanged, e.g. an FPS
+  re-render (decision 0010). The `render` job spec carries the plan.
 - The server stores track params and plan in the version's DB row; the
   `.anim` metadata carries a copy.
 

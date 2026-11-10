@@ -189,8 +189,9 @@ are, not one fixed rule:
   versions → same plan.
 - **Instance edits** (v1): `overrides` holds only the fields the user
   changed; every other field stays automatic. A segment with overrides is
-  **pinned**: re-planning (new track params or seed, a grid override)
-  keeps its bars, method, and overrides, and plans the rest around it.
+  **pinned**: re-planning (new track params or seed, a grid override, a
+  generator or method version change) keeps its bars, method, and
+  overrides, and plans the rest around it.
   Its automatic fields are re-chosen as usual.
 - Segments are anchored by **bar numbers**, so they survive a grid
   override; `start`/`end` are recomputed from the grid.
@@ -205,8 +206,11 @@ are, not one fixed rule:
   method's `Params` and `choose_params`) is imported by the server, so
   `generators/` keeps heavy imports (torch) out of module level.
 - **Plans don't depend on the FPS.** Segments are in bars and seconds;
-  the display FPS only enters at render time, so changing it re-renders
-  the same plan.
+  the display FPS only enters at render time (including strobe's
+  half-FPS limit, Smoothness), so an FPS re-render renders the stored
+  plan unchanged (decision 0010). A render re-plans first only if the
+  version has no plan yet or the generator or a method version changed;
+  the new plan overwrites the stored one.
 - **Manual editor (deferred):** also change a segment's method,
   boundaries, and transition; those edits pin the segment the same way.
 
@@ -219,7 +223,8 @@ Two levels:
 - palette: from the track, or a user pick
 - methods: which are enabled, and a weight for each (how often the
   director picks it)
-- strobe max flash rate (default: the display maximum)
+- strobe max flash rate (default and ceiling: 60 flashes/s, or half the
+  FPS if lower)
 - seed (re-roll for a different plan)
 
 **Instance params** — per use of a method. If `raindrops` runs in bars
@@ -249,14 +254,15 @@ things must glide between pixels instead of popping:
 - **Hits:** a kick is a near-instant attack with a smooth decay
   (~100–300 ms): punchy without flicker.
 - **Exceptions:** `static`, `strobe`, and star twinkle flicker on purpose.
-  Strobe's max flash rate defaults to the display maximum: one on/off
-  cycle per two frames at the render's FPS (30 / 60 / 120 flashes/s at
-  60 / 120 / 240 FPS); the track param can lower it.
-- **Dropped frames alias fast flicker.** A render played below its own
-  FPS (decision 0010) drops frames, so a strobe at the render's maximum
-  plays as solid on or off. The plan records its fastest strobe rate; a
-  version whose rate is above half the current display FPS is flagged
-  stale, like a render below the display FPS *(proposed)*.
+  Strobe's max flash rate is **60 flashes/s**, or half the render's FPS
+  if that is lower (one on/off cycle per two frames: 15 flashes/s at
+  30 FPS, 60 from 120 FPS up); the track param can lower it. The plan
+  holds the requested rate; the half-FPS limit is applied at render time,
+  so the plan stays independent of the FPS. Faster
+  flashing fuses into steady half brightness, so a strobe looks the same
+  at any rate from 120 FPS up. A render always plays at its own FPS
+  (decision 0010), so frames are never dropped and a strobe never
+  aliases.
 
 ## Inputs
 **`Music`** — built once per render from `analysis.json`,
@@ -265,7 +271,9 @@ beat and bar index and phase, the current section and phrase and its tags,
 time since and until events, per-bar energy (interpolated), feature
 envelopes, genre, mood, palette. It hides grid vs. variable tempo and the
 user override. The raw `analysis.json` dict is available as an escape
-hatch.
+hatch. The API server also builds a `Music` for planning; it never
+touches audio there (the server doesn't read audio), so audio is
+decoded lazily, only when a method in the worker asks for samples.
 
 **Audio samples** — methods can read the actual waveforms *(proposed)*:
 - `music.samples(stem, t0, t1)` → `[n, 2]` float32 stereo at 44.1 kHz,
@@ -273,30 +281,36 @@ hatch.
   (`source.<ext>`).
 - `music.frame_windows(stem, start, stop, length)` → `[frames, length, 2]`:
   the window of samples ending at each frame's time, the common case for
-  waveform methods (a frame spans ~735 / ~367 / ~184 samples at
-  60 / 120 / 240 FPS).
+  waveform methods (a frame spans ~1,470 / ~367 / ~92 samples at
+  30 / 120 / 480 FPS).
 - Decoded once per render and cached in the render job: four stereo stems
   of a 4-min track are ~340 MB as float32, fine for the worker; decode per
   chunk if the large build makes this tight.
 - Offline only: playback still reads just the animation file.
 
 **`features.npz`** — needed from the start, since kicks and bass drive most
-methods. A new CPU stage in analysis *(proposed)*:
-- kick onsets and strength (drums stem, low band); snare/hat onsets (drums
-  stem, higher bands) for accents
-- envelopes per stem (RMS), unsmoothed
-- a log-frequency band spectrum (~24 bands) **per stem and for the mix**,
-  for `spectrogram` and for coloring by what a stem is doing
-- stereo width per stem (side / mid energy), so the director can choose
+methods. A new CPU stage `features` in analysis *(proposed; full spec in
+`decisions/0012-stem-features.md`)*:
+- onsets with strength: `kick` / `snare` / `hat` as low / mid / high band
+  hits on the drums stem, plus note onsets for `bass`, `other`, `vocals`
+- envelopes per lane (mix + four stems, RMS, 300 Hz), unsmoothed, with
+  each lane's loud level so `Music` can normalize them
+- a 24-band log-frequency spectrum (40 Hz – 16 kHz, 100 Hz) **per stem
+  and for the mix**, for `spectrogram` and for coloring by what a stem is
+  doing
+- stereo width per lane (100 Hz), so the director can choose
   `vectorscope` and its stem
-- at a fixed rate at least the highest display FPS (e.g. 240 Hz), so it
-  is independent of the display FPS setting; `Music` resamples
+- fixed rates, independent of the display FPS and the grid, so neither an
+  FPS change nor a grid override re-runs this stage; `Music` interpolates
+  envelopes and spectra to frame times, and onsets are stored as times, so
+  they land exactly at any rate
 - Methods use features where they can (cheap, precomputed) and raw
   samples where they need the waveform's shape.
 
-**`RenderContext`** — pixel positions, fps (the display FPS the render was
-queued at: 60, 120, or 240), frame count, `Music`, seed. Methods work in
-seconds, never assume a frame rate, and look the same at any of the three:
+**`RenderContext`** — pixel positions, fps (the display FPS when the
+render started: any whole number from 30 to 480), frame count, `Music`,
+seed. Methods work in seconds, never assume a frame rate, and look the
+same at any rate:
 - `pos`: normalized, centered, **y up** (rain and fireworks fall, the
   landscape has a ground), divided by the largest half-extent so aspect
   ratio is kept: a method written for the prototype fits the large build
@@ -314,7 +328,9 @@ seconds, never assume a frame rate, and look the same at any of the three:
 - Randomness: a per-segment RNG seeded from `(seed, segment start bar)`,
   so re-planning or editing one segment doesn't reshuffle the others.
 - Versions: the generator version covers the director; each plan entry
-  records its method version. A render is stale if either changed.
+  records its method version. A render is stale if either changed (or the
+  geometry hash or file format version; `architecture.md` → Lifecycle),
+  and re-rendering it after a version change re-plans first.
 - numpy on the CPU first; allow torch inside a method if a 20k-pixel render
   measures too slow. Methods are registered in a dict keyed by `id`.
 
@@ -329,15 +345,16 @@ seconds, never assume a frame rate, and look the same at any of the three:
 ## Settled
 - Methods can read the stems' and mix's audio samples, not only features.
 - Planning runs in the API server (decision 0011).
-- Methods render at the display FPS (60 / 120 / 240, decision 0010) and
-  must not assume a rate.
+- Methods render at the display FPS (any whole number from 30 to 480,
+  decision 0010) and must not assume a rate.
 - Repeated parts (e.g. a second drop) pick freely, like any segment.
 - Transitions depend on the contrast between neighboring segments, with a
   1–2 beat crossfade as the baseline; drops always cut hard.
 - The Studio v1 form has track params, plus params per method instance
   (each segment a method runs in), edited from the segment lane.
 - No intro/outro detection; the director uses the existing analysis.
-- Strobe max flash rate defaults to the display maximum.
+- Strobe max flash rate: 60 flashes/s, or half the FPS if lower; the
+  track param can only lower it.
 - Build order as above.
 
 ## Open questions

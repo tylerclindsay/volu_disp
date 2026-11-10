@@ -18,8 +18,8 @@ Read first:
 
 ## Layout
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
-  README): `analysis/` (implemented), then `geometry/`, `mapping/`,
-  `animfile/`, `generators/`, `output/`, `engine/`, `worker/`, `server/`,
+  README): `analysis/` and `animfile/` (implemented), then `geometry/`,
+  `mapping/`, `generators/`, `output/`, `engine/`, `worker/`, `server/`,
   `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
@@ -34,13 +34,16 @@ Read first:
   can be slow (demucs especially), and be re-run. Store stems and analysis
   per track (keyed by audio hash) so re-generating animations doesn't re-run
   demucs.
-  Output is a deterministic, pre-rendered **animation file**: audio
-  reference + frame rate + voxel frames + metadata (BPM, generator
-  version/params, geometry hash).
-- Animations are rendered at the **display FPS**: a UI setting of 60, 120
-  (default), or 240 (`../docs/decisions/0010-display-fps.md`). Never
-  assume 120. A lower display FPS plays existing renders by dropping
-  frames; a higher one needs a re-render.
+  Output is a deterministic, pre-rendered **animation file**: voxel
+  frames + metadata (track SHA-256, frame rate, generator version, track
+  params, plan, geometry hash; `../docs/decisions/0008-animation-file-format.md`).
+  The audio is not in the file; playback reads the track's own source.
+- Animations are rendered at the **display FPS**: a UI setting, any whole
+  number from 30 to 480, default 120
+  (`../docs/decisions/0010-display-fps.md`). Never assume 120. A render
+  plays only at its own FPS: playback never drops, holds, or resamples
+  frames, so after an FPS change every render at the old rate is
+  unplayable until re-rendered.
 - **Playback** only reads an animation file and does two things: play audio
   and send frames. No analysis or rendering in the hot path.
 - Live/reactive modes (if wanted later) should still produce frames through
@@ -84,10 +87,12 @@ track, not in analysis.json). Key rules:
   separate from the animation frame index.
 
 ### 3. Keep the UI out of the timing path
-- The playback engine runs as its own process/service; the UI is a client
-  (HTTP for control, WebSocket for status/preview). A UI freeze, reload, or
-  crash must never stall audio or frames.
-- The UI shows state the engine reports; it does not compute timing itself.
+- The playback engine runs as its own process; the UI is a client of the
+  API server only (HTTP for control, WebSocket for status/preview), which
+  relays to the engine. A UI freeze, reload, or crash must never stall
+  audio or frames.
+- The UI shows state the engine reports (via the server); it does not
+  compute timing itself.
 
 ### 4. Layered data model
 Keep these as distinct, testable layers:
@@ -125,8 +130,8 @@ Generators never know about nodes, strips, or packets.
 - Geometry/mapping: every physical pixel mapped exactly once; offsets
   produce the expected positions.
 - Timing: a headless playback test that measures frame-send jitter and
-  drift against the audio clock over a full-length track, at each display
-  FPS (60, 120, 240).
+  drift against the audio clock over a full-length track, at 30, 120, and
+  480 FPS and an odd rate in between (e.g. 97).
 - Generators: deterministic output for a given audio + params (snapshot tests).
 
 ### 8. Tech stack (tentative — not decided)

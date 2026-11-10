@@ -8,8 +8,8 @@ Status: draft — collected from discussion, not final.
 - Prototype: 10 × 12 × 8 (x wide × y tall × z deep), 2 drive nodes.
 - Configurable mapping: each drive node is assigned a rectangular section
   (prism or cube) of the display.
-- Display frame rate **60, 120 (default), or 240 FPS**, set in the UI
-  (`decisions/0010-display-fps.md`).
+- Display frame rate: **any whole number from 30 to 480 FPS, default
+  120**, set in the UI (`decisions/0010-display-fps.md`).
 
 ## Generation pipeline
 Triggered from the UI when the user adds an audio file:
@@ -30,11 +30,12 @@ Triggered from the UI when the user adds an audio file:
    What the animations look like is not yet decided.
 4. Output: an **animation file** of structured frame data (format:
    `decisions/0008-animation-file-format.md`), rendered at the display
-   frame rate. Lowering the rate later needs no re-render; raising it
-   (e.g. to 240 FPS) does.
+   frame rate. An animation plays only at the rate it was rendered at:
+   after the display frame rate changes, every animation is unplayable
+   until it is re-rendered at the new rate.
 
 ## UI
-- Settings, including playback frame rate.
+- Settings, including the display frame rate.
 - Import local audio files (copied into the system's track data); song
   selector; play songs.
 - While a song is selected/playing: a **3D visualization** of the display
@@ -42,8 +43,10 @@ Triggered from the UI when the user adds an audio file:
   **detected BPM**, while the
   animation's pixel data streams to the display over UDP in sync with audio.
 - A play queue (tracks play end to end; no playlists or fades in v1).
-- Tweak generator parameters (constant per track) and re-render the whole
-  track from the UI.
+- Tweak generator parameters (track params, constant per track, plus
+  per-instance params for each segment a method runs in;
+  `generators.md` → Studio parameters) and re-render the whole track from
+  the UI.
 - Full UI design: `ui.md`.
 
 ## Open questions
