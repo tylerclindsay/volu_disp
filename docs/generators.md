@@ -290,8 +290,8 @@ decoded lazily, only when a method in the worker asks for samples.
 - Offline only: playback still reads just the animation file.
 
 **`features.npz`** — needed from the start, since kicks and bass drive most
-methods. A new CPU stage `features` in analysis *(proposed; full spec in
-`decisions/0012-stem-features.md`)*:
+methods. A new CPU stage `features` in analysis (full spec in
+`decisions/0012-stem-features.md`):
 - onsets with strength: `kick` / `snare` / `hat` as low / mid / high band
   hits on the drums stem, plus note onsets for `bass`, `other`, `vocals`
 - envelopes per lane (mix + four stems, RMS, 300 Hz), unsmoothed, with
@@ -322,7 +322,7 @@ same at any rate:
 - Methods return float32 linear RGB `[0, 1]`. The job blends transitions,
   clips, applies a fixed gamma, and quantizes to uint8 for the file.
 - Global brightness and a power cap are applied at playback by the engine
-  (adjustable live, like the sync offset) *(proposed)*.
+  (adjustable live, like the sync offset).
 - The job renders in animation-file chunks (1 s: `fps` frames), in order, and
   checks for cancel between chunks. A chunk that straddles a segment
   boundary asks both methods for their part.

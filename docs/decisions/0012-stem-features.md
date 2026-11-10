@@ -1,6 +1,6 @@
 # 0012 — Stem features for generators
 
-Date: 2026-11-09. Status: **proposed**; not yet built. Values marked
+Date: 2026-11-09. Status: accepted; not yet built. Values marked
 *(tune)* are starting points to check by eye and ear on the test tracks.
 
 ## Context

@@ -6,8 +6,7 @@ development: update it in place when the design moves, and record settled,
 non-obvious choices in `decisions/`. It overrides the "Recommended approach"
 section of `gen_system/AGENTS.md` wherever the two differ.
 
-Open questions are collected at the end; items marked *(proposed)* are the
-current default until decided.
+Open questions are collected at the end.
 
 Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
@@ -211,7 +210,7 @@ use the same output path as playback.
 output is disarmed, frames are still produced and previewed but not sent.
 Armed output goes only to nodes in the online set. Global brightness and a
 power cap are applied here, adjustable live like the sync offset
-*(proposed, `generators.md` → Output and render job)*.
+(`generators.md` → Output and render job).
 
 **Slots.** `current` and `next` each hold decoded audio + an open animation
 file. `next` is preloaded so a track change is gapless. After a change the
@@ -289,7 +288,7 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
 | Message | Fields / meaning |
 |---|---|
 | `hello` | sent on connect; the engine replies `hello` |
-| `configure` | display config path, geometry hash, audio device + output mode (shared/exclusive), display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes, brightness + power cap *(proposed)*. Full snapshot; sent on connect and on any change |
+| `configure` | display config path, geometry hash, audio device + output mode (shared/exclusive), display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes, brightness + power cap. Full snapshot; sent on connect and on any change |
 | `load` | slot (`current`/`next`), track id, audio path, anim path, start time |
 | `swap_anim` | anim path; replace current animation at the playhead |
 | `play` / `pause` / `stop` / `seek{t}` | transport |
@@ -489,7 +488,7 @@ Implemented by `TrackDir` and `import_track` (`analysis/track.py`).
   it bypasses the server, so its tracks get no DB row and show up in
   Settings as orphaned track directories.
 
-**Removing a track** from the library *(proposed)*: asks whether to also
+**Removing a track** from the library asks whether to also
 delete its directory. Keeping it makes re-adding the same file instant (no
 demucs). Settings lists orphaned track directories (no DB row) with their
 size and can delete them.
@@ -502,7 +501,7 @@ size and can delete them.
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
-| `features.npz` *(proposed, not yet built)* | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / hat from the drums stem; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~11 MB raw for a 6.6-min track (est.) |
+| `features.npz` *(not yet built)* | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / hat from the drums stem; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~11 MB raw for a 6.6-min track (est.) |
 | `check/` | Listening aids: `clicks.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
 - The decoded mix is **not** stored: `source.<ext>` is decoded whenever
@@ -674,6 +673,15 @@ Former open questions, now part of the design above:
   - Calibration is stored per (device, mode), since the offset differs.
   - Still to verify with the calibration flash + click once the engine
     exists.
+- **Brightness and power cap are applied by the engine at playback**,
+  not baked into renders, and change live like the sync offset (Engine →
+  Output, `configure`).
+- **Removing a track asks whether to also delete its directory**; kept
+  directories make re-adding instant, and Settings lists and deletes
+  orphaned ones (Storage layout → `data/tracks/<key>/`).
+- **Stem features** (`features.npz`, `decisions/0012-stem-features.md`):
+  a CPU analysis stage after `peaks`, at fixed rates independent of the
+  display FPS and the grid.
 
 ## Open questions
 1. **Generator interface** — design in progress in `generators.md`: a
