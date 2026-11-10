@@ -5,8 +5,12 @@ Host software for the volumetric display: a UI plus a backend that
 while streaming pixel data to the display over Ethernet, in sync.
 
 Read first:
-- `../AGENTS.md` — hardware, terminology, geometry (whole-system facts).
+- `../AGENTS.md` and `../docs/hardware.md` — terminology, hardware,
+  geometry, drive node mapping (whole-system facts).
 - `../docs/requirements.md` — what gen_system must do.
+- `../docs/architecture.md` — processes, IPC, flows, storage.
+- `../docs/generators.md` — the director, plans, and methods.
+- `../docs/ui.md` — the UI.
 - `../docs/protocol.md` — UDP wire protocol to the drive nodes.
 - `../config/displays/` — display configs.
 
@@ -75,6 +79,24 @@ track, not in analysis.json). Key rules:
   covers those. The grid accept/reject check stays as is (0004 → Known gaps).
 - **Pin `transformers==4.51.1`.** SongFormer's remote code breaks on
   transformers 5.x. Python 3.11, torch 2.11 cu128.
+- Stem features (`features.npz`, `../docs/decisions/0012-stem-features.md`;
+  not yet built): a CPU stage after `peaks`, at fixed rates. It does not
+  re-run on a grid override or a display FPS change.
+
+### 1b. Generators (`generators/`)
+Design: `../docs/generators.md`. Key rules:
+- Two steps: the director makes a **plan** (segments, methods, params) and
+  the render job renders exactly that plan. Planning runs in the API server
+  (`../docs/decisions/0011-planning-in-server.md`).
+- The server imports `generators/`, so **no heavy imports (torch) at module
+  level**.
+- Methods carry **no state frame to frame** and must render any frame range
+  of their segment. They work in seconds, never assume a frame rate, and
+  return float32 linear RGB.
+- Bump a method's `version` whenever its output changes for the same params.
+- Randomness: a per-segment RNG seeded from `(seed, segment start bar)`.
+- Smoothness first: soft edges about one pixel pitch wide, eased param
+  changes, kicks as a fast attack with a smooth decay.
 
 ### 2. The audio clock is the master clock
 - Derive the current frame index from the audio device's playback position
@@ -104,8 +126,9 @@ Keep these as distinct, testable layers:
    field at each pixel's position rather than assume a grid.
 3. **Mapping** — pixel → (drive node, strip, pixel index), built from each
    drive node's rectangular `section` in the display config (see
-   `../AGENTS.md` → Drive node mapping). Validate on load: no overlaps, full
-   coverage, ≤ 64 strips per node. Must match the firmware's strip layout.
+   `../docs/hardware.md` → Drive node mapping). Validate on load: no
+   overlaps, full coverage, ≤ 64 strips per node, longest strip fits the
+   display FPS. Must match the firmware's strip layout.
 4. **Output** — packetizer (mapping + frame → UDP packets) and sender.
 Generators never know about nodes, strips, or packets.
 
@@ -132,7 +155,9 @@ Generators never know about nodes, strips, or packets.
 - Timing: a headless playback test that measures frame-send jitter and
   drift against the audio clock over a full-length track, at 30, 120, and
   480 FPS and an odd rate in between (e.g. 97).
-- Generators: deterministic output for a given audio + params (snapshot tests).
+- Generators: the same analysis, features, track params, edits, and seed
+  give the same plan; pinned segments survive a re-plan; snapshot tests of
+  a render from a fixed plan.
 
 ### 8. Tech stack (partly decided; see `../docs/architecture.md`)
 - Frontend: decided — see `../docs/ui.md` (Vite + React + TS, Mantine,

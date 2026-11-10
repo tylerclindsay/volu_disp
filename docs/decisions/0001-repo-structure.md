@@ -9,7 +9,9 @@ Date: 2026-11-01. Status: accepted.
 - `scripts/` → `tools/`.
 - `pcb/` folder names are kept as-is (renaming KiCad projects is error-prone).
 - Whole-system facts live in the root `AGENTS.md`; host software guidance in
-  `gen_system/AGENTS.md`.
+  `gen_system/AGENTS.md`. *Amended 2026-11-09:* the hardware, geometry,
+  and mapping facts moved to `docs/hardware.md`; the root `AGENTS.md`
+  keeps a short summary and links to it.
 - Shared display config lives in `config/displays/` at the repo root, since
   both gen_system and the firmware depend on it.
 - Generated and user data (audio, stems, animations) lives in `data/`, which
