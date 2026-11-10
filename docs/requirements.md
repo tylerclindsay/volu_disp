@@ -53,4 +53,5 @@ Triggered from the UI when the user adds an audio file:
 - Animation style/design. Direction in `generators.md`: a director picks
   one of several methods (rain, fireworks, geometry, …) per song segment.
 - Whether live/reactive modes are in scope.
-- Audio output device.
+- Audio output device. (The output API is settled:
+  `decisions/0009-audio-output-api.md`.)

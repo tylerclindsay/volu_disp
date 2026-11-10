@@ -4,8 +4,9 @@ Python package `volu_gen` (`src/volu_gen/`). Implemented so far:
 **`analysis/`** — stems, beat grid, sections, phrases, genre, mood
 (`../../docs/decisions/0004-audio-analysis.md`, drops:
 `0005-per-bar-drops.md`), and waveform peaks for the UI
-(`0006-waveform-peaks.md`). Still to come: geometry,
-generators, animation file I/O, output (mapping, packetizer, UDP sender),
+(`0006-waveform-peaks.md`). **`animfile/`** — animation file read/write
+(`0008-animation-file-format.md`). Still to come: geometry,
+generators, output (mapping, packetizer, UDP sender),
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)

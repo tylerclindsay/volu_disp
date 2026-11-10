@@ -102,7 +102,7 @@ version bump.
 - The loader opens the file and reads header, meta and index.
 - A **prefetch thread** keeps the playhead's chunk and the next one
   decoded in a small ring (≈ 0.35 MB per chunk on the prototype, 7.2 MB at
-  20k pixels). The frame thread only takes a reference to a decoded chunk.
+  20k pixels, at 120 FPS; linear in the rate). The frame thread only takes a reference to a decoded chunk.
   If the chunk is not ready (just after a seek), it repeats the last frame
   and counts a late frame.
 - Seek costs one chunk decode (a few ms). For `swap_anim`, the loader

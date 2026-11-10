@@ -134,11 +134,13 @@ Generators never know about nodes, strips, or packets.
   480 FPS and an odd rate in between (e.g. 97).
 - Generators: deterministic output for a given audio + params (snapshot tests).
 
-### 8. Tech stack (tentative — not decided)
+### 8. Tech stack (partly decided; see `../docs/architecture.md`)
 - Frontend: decided — see `../docs/ui.md` (Vite + React + TS, Mantine,
   react-three-fiber, TanStack Query, Zustand).
 - Generation: Python 3.11 + PyTorch. Analysis models are decided (see 1a);
   `transformers` pinned to 4.51.1.
+- IPC: ZeroMQ (`../docs/decisions/0007-ipc-zeromq.md`). Audio output:
+  WASAPI shared by default (`../docs/decisions/0009-audio-output-api.md`).
 - Playback: start in Python; move the frame sender to a compiled language
   only if measured jitter requires it.
 - Dev machine is Windows 11; keep scripts and paths cross-platform.

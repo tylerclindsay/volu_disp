@@ -36,8 +36,9 @@ Nodes drop packets with the wrong magic or version, and ignore unknown types.
   `p` of strip `s` is at `offset = s × LEDS_PER_STRIP + p`. Pixel 0 is the top
   of the strip. All strips on a node have the same length (a node's section
   is a box), so `LEDS_PER_STRIP` = the section's height. The firmware's
-  compiled `NUM_STRIPS` and `LEDS_PER_STRIP` must match the display config;
-  the host validates this.
+  compiled `NUM_STRIPS` and `LEDS_PER_STRIP` must match the display config.
+  The host can't check this until node status (type 3) exists; until then
+  it is checked by hand when flashing.
 - A packet may span strip boundaries. The host should fill packets fully
   (fewest packets per frame).
 - Colors are always RGB on the wire; the firmware converts to the strips'

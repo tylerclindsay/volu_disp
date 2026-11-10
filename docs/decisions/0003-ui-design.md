@@ -17,10 +17,13 @@ parameters will be tweaked often. See `../ui.md` for the full design.
 - Playback is a simple queue: tracks play end to end, no playlists or fades.
 - Studio re-renders the **entire track** on each Render; one overwritten
   Draft slot per track, explicit saved versions, one active version.
-- UI-set generator parameters are constant across a track.
+- UI-set generator parameters are constant across a track. *Amended:*
+  v1 also has per-instance params for each segment a method runs in
+  (`../generators.md` → Studio parameters); automation within a segment
+  stays deferred.
 - Hardware output is armed automatically when drive nodes are detected (ping
   until node status packets exist), in Playback and Studio; manual override.
 
 ## Deferred
-Loop-region preview with background re-render and A/B; per-section
-parameters; playlists/crossfades. See `../ui.md` → Deferred.
+Loop-region preview with background re-render and A/B; parameter
+automation within a segment; playlists/crossfades. See `../ui.md` → Deferred.

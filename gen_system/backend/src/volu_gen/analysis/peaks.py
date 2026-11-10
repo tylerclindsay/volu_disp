@@ -96,11 +96,13 @@ def chunks_of(audio: np.ndarray, block: int = BLOCK):
 
 
 def write_peaks(path: Path, peaks: dict):
-    tmp = Path(path).with_suffix(".tmp.npz")
-    np.savez_compressed(tmp, version=peaks["version"], sample_rate=peaks["sample_rate"],
-                        bucket=peaks["bucket"], n_samples=peaks["n_samples"],
-                        lanes=np.array(peaks["lanes"]),
-                        **{f"level{k}": a for k, a in enumerate(peaks["levels"])})
+    path = Path(path)
+    tmp = path.with_name(path.name + ".tmp")  # a file object, so numpy doesn't append .npz
+    with open(tmp, "wb") as f:
+        np.savez_compressed(f, version=peaks["version"], sample_rate=peaks["sample_rate"],
+                            bucket=peaks["bucket"], n_samples=peaks["n_samples"],
+                            lanes=np.array(peaks["lanes"]),
+                            **{f"level{k}": a for k, a in enumerate(peaks["levels"])})
     tmp.replace(path)
 
 

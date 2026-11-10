@@ -27,6 +27,12 @@ COMPATIBLE_VERSIONS = {1}
 DERIVED_KEYS = ["phrases", "events", "bars"]
 
 
+def tmp_path_for(path: Path) -> Path:
+    """Where a file is written before its atomic rename: <name>.tmp, so an
+    interrupted write never leaves a partial file under the real name."""
+    return path.with_name(path.name + ".tmp")
+
+
 def default_data_dir() -> Path:
     # backend/src/volu_gen/analysis/track.py → repo root
     return Path(__file__).resolve().parents[5] / "data"
@@ -129,7 +135,10 @@ class TrackDir:
     def save_stems(self, stems: dict[str, np.ndarray]):
         (self.dir / "stems").mkdir(exist_ok=True)
         for name, wav in stems.items():
-            sf.write(self.stem_path(name), wav.T, BASE_SR)
+            path = self.stem_path(name)
+            tmp = tmp_path_for(path)
+            sf.write(tmp, wav.T, BASE_SR, format="FLAC")
+            os.replace(tmp, path)
 
     def stem(self, name: str) -> np.ndarray:
         a, sr = sf.read(self.stem_path(name), dtype="float32", always_2d=True)
@@ -146,4 +155,6 @@ class TrackDir:
         return self.dir / "peaks.npz"
 
     def save(self):
-        self.json_path.write_text(json.dumps(self.data, indent=1))
+        tmp = tmp_path_for(self.json_path)
+        tmp.write_text(json.dumps(self.data, indent=1))
+        os.replace(tmp, self.json_path)
