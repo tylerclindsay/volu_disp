@@ -1,9 +1,9 @@
 # Wire protocol (host → drive node)
 
-**Current version: v2.** The host implements it in `volu_gen/output/`
-(`protocol.py` holds the constants and byte layout; `nodesim.py` the
-receive rules below). The firmware and `tools/udp_rainbow_sender.py` still
-speak v1 (see the end of this file).
+**Current version: v2.** Implemented by the host (`volu_gen/output/`:
+`protocol.py` holds the constants and byte layout, `nodesim.py` the
+receive rules below), the firmware (`firmware/drive_node/src/`), and
+`tools/udp_rainbow_sender.py`. Change all of them together.
 Decision record: `decisions/0002-protocol-v2.md`.
 
 ## Transport
@@ -92,19 +92,3 @@ each other.
 ## Reserved
 - Type `3`: status/telemetry from nodes (frame counts, incomplete frames,
   drops). Not specified yet.
-
----
-
-## Appendix: v1 (what the firmware implements today)
-Single 7-byte header, no version or frame number, one strip per packet:
-
-| offset | size | field  | notes                                           |
-|-------:|-----:|--------|-------------------------------------------------|
-| 0      | 1    | magic  | `0xA7`                                          |
-| 1      | 1    | flags  | bit0 `SHOW`: latch all strips after this packet |
-| 2      | 1    | strip  | 0 .. NUM_STRIPS-1                               |
-| 3      | 2    | start  | first pixel index                               |
-| 5      | 2    | count  | pixels in this packet (≤ 488)                   |
-| 7      | 3·n  | pixels | R,G,B per pixel                                 |
-
-Remove this appendix once the firmware and tools are on v2.

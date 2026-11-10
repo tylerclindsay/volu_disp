@@ -34,10 +34,30 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
   on the drive node → IDC ribbon cable → 74HCT595 shift registers on the edge
   node, each fanning one serial data line out to 8 strips. Strips update in
   parallel; WS2811 timing per strip is unchanged.
-- LEDs: 12V WS2811, GRB order, driven by FastLED's ESP32 **I2S** driver.
-- The firmware is currently a 2-strip × 10-LED test setup using plain per-pin
-  FastLED outputs (`NUM_STRIPS`, `STRIP_LEDS[]` in
-  `firmware/drive_node/src/main.cpp`); not yet moved to I2S or 64 strips.
+- LEDs: 12V WS2811, GRB order, driven by the firmware's own **I2S1
+  parallel DMA** driver into the 595s (`firmware/drive_node/src/edge_out.cpp`,
+  `decisions/0014-edge-node-output.md`): SRCLK 20 MHz, 3 slots × 8
+  samples per WS2811 bit (1.2 µs), 28.8 µs per pixel. Written and
+  simulated; not yet run on hardware (bring-up checklist in 0014).
+- Drive node GPIOs (`firmware/drive_node/src/config.h`): serial data
+  E1 Q1–Q4 = IO17, 12, 14, 15; E2 Q1–Q4 = IO33, 32, 3, 1; SRCLK IO4;
+  RCLK IO2; inputs E1/E2 `5V_PRESENT` IO39/36 (low = edge node's 5V up),
+  E1/E2 `PWR_GOOD` IO5/35 (low = 12V hot-swap good; reads high when
+  unplugged). Serial data of an edge node without 5V is held low.
+- IO1/IO3 are UART0, so serial output stops after the boot banner; logs
+  and stats go as UDP text to port 7778 of the host that last sent a
+  valid packet (`tools/node_stats.py`). Disconnect a USB-serial adapter's
+  TX from IO3 while the node runs.
+- Strip layout per node: `NUM_STRIPS`, `LEDS_PER_STRIP` in
+  `firmware/drive_node/src/config.h` (or `-D` build flags), default the
+  2 × 10 bench (`config/displays/bench.yaml`).
+- Firmware buffering: PIXELS write a back buffer; a latch copies it to a
+  pending buffer at once; when the LEDs are free the show task swaps
+  pending and front, and the DMA interrupt encodes front on the fly.
+  Three buffers of `NUM_STRIPS (rounded up to 8) × LEDS_PER_STRIP × 3`
+  bytes (≈ 159 KB at 64 × 276) plus a 13.8 KB DMA ring on the heap. The
+  stats line reports the measured show time (`show max`) to check against
+  the expected time printed at boot.
 - Drive nodes use static IPs `192.168.1.(100 + NODE_ID)`, OTA updates via
   espota, and blank their LEDs after `DATA_TIMEOUT_MS` (3 s) without valid
   packets.
@@ -45,10 +65,10 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
   default 120** (`decisions/0010-display-fps.md`). Animations render
   at it and play only at it: after a change, every animation is unplayable
   until re-rendered. Don't assume 120.
-- WS2811 timing is ≈ 30 µs/pixel per strip. A frame takes roughly
-  `longest_strip × 30 µs` (+ reset), so strips are capped at **~1,100 /
-  ~270 / ~65 pixels** at 30 / 120 / 480 FPS. Validate the chosen FPS
-  against the longest strip.
+- WS2811 timing is ≈ 30 µs/pixel per strip (28.8 µs in the firmware). A
+  frame takes roughly `longest_strip × 30 µs` (+ reset), so strips are
+  capped at **~1,100 / ~270 / ~65 pixels** at 30 / 120 / 480 FPS.
+  Validate the chosen FPS against the longest strip.
 
 ## Display geometry
 - **Size is not fixed.** A small prototype is being built now; a much larger
@@ -80,6 +100,9 @@ KiCad projects. Firmware hostnames are `volu-disp-node-<NODE_ID>`.
 - Strip numbering inside a node — planned default, wiring not final:
   slice by slice, then across (`strip = (z - z0) * width + (x - x0)`);
   strips 0–31 on the first edge node, 32–63 on the second.
+- Strip `s` plugs into edge node `s / 32`, connector `J(s % 32 + 1)`
+  (595 `Q(s % 32 / 8 + 1)`, output A–H = `s % 8`); fixed by the firmware
+  (decision 0014).
 
 ## Open questions
 - Final physical wiring order of strips within a drive node.

@@ -15,7 +15,7 @@ to the display over Ethernet.
 AGENTS.md            this file
 docs/                hardware, requirements, architecture, generators, ui, protocol spec, decisions/
 config/displays/     display configs (geometry, nodes, strips, default FPS)
-firmware/drive_node/ drive node firmware (PlatformIO, Arduino, FastLED)
+firmware/drive_node/ drive node firmware (PlatformIO, Arduino, own I2S driver)
 pcb/                 KiCad projects (names: docs/hardware.md → Terminology)
 gen_system/          host software: backend/ (Python), ui/ (React)
 tools/               standalone test/dev tools (e.g. udp_rainbow_sender.py)
@@ -42,10 +42,10 @@ receives data for its own strips.
 - **v2** (current spec): versioned header with a frame number; PIXELS write
   into a flat per-node buffer (several strips per packet); one broadcast
   SYNC latches all nodes together; nodes double-buffer.
-- gen_system implements v2 (`gen_system/backend/src/volu_gen/output/`);
-  `tools/fake_node.py` simulates v2 nodes. The firmware (still a 2-strip
-  test setup) and `tools/udp_rainbow_sender.py` still implement **v1**
-  until they are updated.
+- Implemented by gen_system (`gen_system/backend/src/volu_gen/output/`),
+  the firmware (drives the edge nodes' 595s over I2S, decision 0014; not
+  yet run on hardware) and `tools/udp_rainbow_sender.py`;
+  `tools/fake_node.py` simulates v2 nodes.
 
 ---
 

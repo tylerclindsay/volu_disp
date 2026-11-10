@@ -1,0 +1,28 @@
+# Bench test setup: one drive node driving 2 strips x 10 pixels through
+# edge node E1 (the firmware's default NUM_STRIPS / LEDS_PER_STRIP in
+# firmware/drive_node/src/config.h). Use it to drive
+# the bench from gen_system, e.g.
+#   uv run python -m volu_gen.output ../../config/displays/bench.yaml --pattern nodes
+# Units: mm. Indices are 0-based. Schema: see prototype.yaml.
+version: 1
+
+geometry:
+  size: { x: 2, y: 10, z: 1 }   # 2 strips, 10 pixels each, one slice
+  strip_spacing: 50
+  pixel_spacing: 50
+  slice_spacing: 25
+  odd_slice_offset:
+    x: 25
+    y: 25
+
+timing:
+  default_fps: 120
+
+network:
+  udp_port: 7777
+
+# Strip s = x: strip 0 on E1 connector J1, strip 1 on J2.
+drive_nodes:
+  - id: 1
+    ip: 192.168.1.101
+    section: { x: [0, 1], y: [0, 9], z: [0, 0] }
