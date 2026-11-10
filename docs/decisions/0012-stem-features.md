@@ -161,8 +161,8 @@ the arrays themselves. Queries are vectorized over an array of times:
   hit, the common building block for decays (kick → 100–300 ms decay,
   `../generators.md` → Smoothness).
 - Interpolation between frames makes every query valid at any frame rate;
-  onsets are times, so a hit lands on the frame that contains it at any
-  rate.
+  onsets are times, so a hit shows from the first frame starting at or
+  after it, at any rate (`../generators.md` → Inputs, `RenderContext`).
 - The API server loads a track's features once per Studio session and
   keeps them in memory (~11 MB per track) for re-planning.
 

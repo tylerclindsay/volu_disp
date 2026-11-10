@@ -87,7 +87,7 @@ class Method(Protocol):
     id: ClassVar[str]                     # stable, e.g. "raindrops"
     version: ClassVar[int]                # bump when output changes for the same params
     Params: ClassVar[type[BaseModel]]     # per instance (segment); pydantic → JSON Schema
-    suits: ClassVar[Suitability]          # phrase types, energy range, granularity
+    suits: ClassVar[Suitability]          # phrase types, energy range, shortest segment (bars)
 
     @classmethod
     def choose_params(cls, seg: SegmentInfo, music: Music, rng) -> Params: ...
@@ -196,7 +196,9 @@ are, not one fixed rule:
   Its automatic fields are re-chosen as usual.
 - Segments are anchored by **bar numbers**, so they survive a grid
   override; `start`/`end` are recomputed from the current grid before
-  every render, so a stored plan never renders on an old grid.
+  every render, so a stored plan never renders on an old grid. Segments
+  are contiguous; the first also covers any lead-in before its bar (it may
+  start at bar 0) and the last runs to the end of the track.
 - **Planning runs in the API server**, not as a worker job
   (`decisions/0011-planning-in-server.md`): it is pure Python over
   `analysis.json` and `features.npz` (milliseconds, no models), so Studio
@@ -281,10 +283,10 @@ decoded lazily, only when a method in the worker asks for samples.
 - `music.samples(stem, t0, t1)` → `[n, 2]` float32 stereo at 44.1 kHz,
   for `vocals`, `drums`, `bass`, `other` (`stems/*.flac`) or `mix`
   (`source.<ext>`).
-- `music.frame_windows(stem, start, stop, length)` → `[frames, length, 2]`:
-  the window of samples ending at each frame's time, the common case for
-  waveform methods (a frame spans ~1,470 / ~367 / ~92 samples at
-  30 / 120 / 480 FPS).
+- `music.windows(stem, ctx.times(start, stop), length)` →
+  `[frames, length, 2]`: the window of samples ending at each frame's
+  time, the common case for waveform methods (a frame spans
+  ~1,470 / ~367 / ~92 samples at 30 / 120 / 480 FPS).
 - Decoded once per render and cached in the render job: four stereo stems
   of a 4-min track are ~340 MB as float32, fine for the worker; decode per
   chunk if the large build makes this tight.
@@ -308,7 +310,7 @@ methods. A new CPU stage `features` in analysis (full spec in
 - fixed rates, independent of the display FPS and the grid, so neither an
   FPS change nor a grid override re-runs this stage; `Music` interpolates
   envelopes and spectra to frame times, and onsets are stored as times, so
-  they land exactly at any rate
+  a hit shows from the first frame starting at or after it, at any rate
 - Methods use features where they can (cheap, precomputed) and raw
   samples where they need the waveform's shape.
 
@@ -321,6 +323,16 @@ same at any rate:
   ratio is kept: a method written for the prototype fits the large build
 - also `pos_mm` and integer `(ix, iy, iz)` per pixel plus slice parity, for
   methods that address slices or strips (alternating-slice strobe)
+- `times(start, stop)`: each frame's start, `k / fps`. The engine shows
+  frame `floor(t × fps)` (`architecture.md` → Engine), so frame k is on
+  screen from that time; a hit inside a frame first shows on the next one
+  (under one frame late: ≤ 8 ms at 120 FPS), a constant the A/V offset
+  calibration absorbs.
+- frame count `ceil(duration × fps)`.
+
+Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
+(interface, `SegmentInfo`, `Suitability`, registry, `segment_rng`) and
+`plan.py` (pydantic plan model); tests in `tests/test_generators.py`.
 
 ## Output and render job
 - Methods return float32 linear RGB `[0, 1]`. The job blends transitions,
@@ -332,6 +344,8 @@ same at any rate:
   boundary asks both methods for their part.
 - Randomness: a per-segment RNG seeded from `(seed, segment start bar)`,
   so re-planning or editing one segment doesn't reshuffle the others.
+  Planning (`choose_params`) and rendering (`Method.rng`) draw from
+  separate streams of it (`segment_rng`).
 - Versions (integers): the generator version covers the director; each plan entry
   records its method version. A render is stale if either changed (or the
   geometry hash or file format version; `architecture.md` → Lifecycle),
@@ -342,6 +356,8 @@ same at any rate:
 ## Build order
 1. The `features` analysis stage.
 2. `Music`, `RenderContext`, the director, the plan, and the render job.
+   *Built so far:* `Music`, `RenderContext`, the method interface and
+   registry, and the plan model. Next: the director, then the render job.
 3. First methods: `geometry`, `raindrops`, `strobe`, `galaxy` (they cover
    calm through drop).
 4. The rest of the methods (including `oscilloscope` and `vectorscope`);

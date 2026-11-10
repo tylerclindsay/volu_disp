@@ -11,7 +11,10 @@ pixel positions, geometry order and hash; **`mapping/`** — pixel → drive
 node / strip / pixel and the config checks (`0013-geometry-order-and-mapping.md`).
 **`output/`** — protocol v2, packetizer, UDP sender and a simulated node
 (`../../docs/protocol.md`).
-Still to come: generators,
+**`generators/`** (started) — `Music` (analysis, features and audio as
+queries over time), `RenderContext`, the method interface and registry,
+and the plan model (`../../docs/generators.md`).
+Still to come: the director, the render job and methods,
 playback, and the HTTP/WebSocket server for the UI.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)

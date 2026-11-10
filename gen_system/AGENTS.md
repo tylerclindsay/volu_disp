@@ -23,7 +23,8 @@ Read first:
 ## Layout
 - `backend/` — Python package `src/volu_gen/` (uv project; see its
   README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
-  `output/` (implemented), then `generators/`, `engine/`, `worker/`, `server/`,
+  `output/` (implemented), `generators/` (inputs, method interface and
+  plan model built; director and render job next), then `engine/`, `worker/`, `server/`,
   `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
