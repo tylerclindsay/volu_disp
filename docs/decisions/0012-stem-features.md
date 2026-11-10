@@ -3,12 +3,14 @@
 Date: 2026-11-09. Status: accepted; built 2026-11-10
 (`gen_system/backend/src/volu_gen/analysis/features.py`,
 `tests/test_features.py`). The drum onset classes were replaced the same
-day by a drum transcription model: `0016-drum-onsets-adtof.md`. Values marked *(tune)* are starting points to
+day by a drum transcription model: `0016-drum-onsets-adtof.md`. Only
+`kick` and `hat` onsets are kept; the flux classes are gone
+(`0017-kick-and-hat-onsets-only.md`). Values marked *(tune)* are starting points to
 check by eye and ear on the test tracks.
 
 ## Context
 Generators (`../generators.md`) need to know, at any time in a track,
-what each stem is doing: when kicks and snares hit, how loud the bass is,
+what each stem is doing: when kicks and hats hit, how loud the bass is,
 which frequencies are active, how wide the stereo image is. The analysis
 in `analysis.json` (decision 0004) is per bar or per phrase, far too
 coarse for that. Raw samples are available to methods, but computing
@@ -43,16 +45,11 @@ Onset classes:
 | Class | Source | Band | Min gap | Use |
 |---|---|---|---|---|
 | `kick` | drums stem, ADTOF (0016) | — | — | the main driver: pulses, big drops, flashes |
-| `snare` | drums stem, ADTOF (0016) | — | — | accents: firework launches, ripples |
-| `tom` | drums stem, ADTOF (0016) | — | — | fills |
 | `hat` | drums stem, ADTOF (0016) | — | — | fine detail: twinkle, sparkle |
-| `cymbal` | drums stem, ADTOF (0016) | — | — | crashes, rides |
-| `bass` | bass stem | full | 80 ms | note starts: swells, terrain pulses |
-| `other` | other stem | full | 50 ms | melodic/synth hits |
-| `vocals` | vocals stem | full | 80 ms | syllables / phrase starts |
 
-The flux classes (`bass`, `other`, `vocals`) use `delta` 0.02 and `local`
-0.3 (below) *(tune)*; they are per-class fields of `ONSET_CLASSES`.
+`snare`, `tom`, `cymbal` (ADTOF) and the flux classes `bass` (80 ms gap),
+`other` (50 ms), `vocals` (80 ms) were stored until decision 0017 dropped
+them as unreliable.
 
 The drum classes were first **band classes** of the drums stem (kick
 30–150 Hz, snare 150 Hz – 4 kHz, hat 6–16 kHz) with the flux method below.
@@ -77,8 +74,9 @@ are seconds in that domain and match `analysis.json` and `peaks.npz`.
   mid = (L + R)/2, side = (L − R)/2, RMS of each (from the bins, by
   Parseval). Bin power is scaled so a frame's bins sum to its windowed
   mean square.
-- **Onsets** (`bass`, `other`, `vocals`; drums: decision 0016, which
-  reuses this flux to snap its hits): for each class, a short STFT (`n_fft` 1024, hop 147, so
+- **Onsets** (as built for `bass`, `other`, `vocals`, removed in decision
+  0017; the full-band flux of the drums stem remains, since decision 0016
+  snaps its hits to it): for each class, a short STFT (`n_fft` 1024, hop 147, so
   3.3 ms frames) of its source stem (mid and side power summed). Per band:
   - **Magnitude spectral flux:** the sum over the band's bins of the
     half-wave rectified rise in magnitude since 3 frames (10 ms) earlier.
@@ -107,8 +105,9 @@ are seconds in that domain and match `analysis.json` and `peaks.npz`.
   STFTs run in blocks of 2048 frames.
 - Time (measured): about 21 s for a 6.6-min track: ~6 s of ADTOF on the
   CPU (decision 0016), the rest in the STFTs (`n_fft` 4096 on five lanes,
-  1024 at a 3.3 ms hop on four). Small next to the model stages, and it
-  runs once per track.
+  1024 at a 3.3 ms hop on four). Since decision 0017 the 1024 STFT runs
+  on the drums stem only: about 16 s for the same track (measured). Small
+  next to the model stages, and it runs once per track.
 
 ### Storage
 - `<data>/tracks/<key>/features.npz` (`np.savez_compressed`), written
@@ -129,7 +128,8 @@ are seconds in that domain and match `analysis.json` and `peaks.npz`.
   `sample_rate` (44100), `env_hop` (147), `spec_hop` (441), `n_fft`
   (4096), `band_edges` (25 Hz values), `n_samples`, `lanes`, `classes`.
 - Size for a 396 s track, raw: env 1.2 MB, spec 9.5 MB, width 0.4 MB,
-  onsets < 0.1 MB: about **11 MB**, **8.2 MB** compressed (measured);
+  onsets < 0.1 MB: about **11 MB**, **8.1 MB** compressed (measured, with
+  kick and hat onsets);
   small next to the stems (~180 MB).
 - Read with `read_features()` (`analysis/features.py`), which returns the
   arrays plus their times. A format change bumps `FEATURES_VERSION`; files
@@ -143,7 +143,7 @@ are seconds in that domain and match `analysis.json` and `peaks.npz`.
   rule).
 - Not re-run by `regrid` or an FPS change.
 - Part of the `analyze` job, so a track's default render waits for it.
-- `--check` also writes, per class, `check/onsets_<class>.wav` (the source
+- `--check` also writes, per class, `check/onsets_<class>.wav` (the drums
   stem at −6 dB with a click per onset, louder for stronger ones) and
   `check/labels_onsets_<class>.txt` (Audacity labels with the strength).
 
@@ -182,10 +182,8 @@ the arrays themselves. Queries are vectorized over an array of times:
   the band classes failed by ear (it runs on the CPU, in this stage).
 
 ## Open questions
-1. Flux onset thresholds and gaps *(tune)* for `bass`, `other`, `vocals`,
-   with the `check/` click tracks per class for listening (not yet checked
-   by ear). At `delta` 0.02, hits about 30 dB under the loud ones are
-   missed; 0.01 finds them but adds up to 30% more `other` onsets.
+1. ~~Flux onset thresholds for `bass`, `other`, `vocals`~~: classes
+   removed (decision 0017).
 2. **Hardstyle kicks are split between stems.** demucs puts the attack in
    `drums` and the long distorted body in `bass` (Hard Driver *Spark
    Inside*: 5% of the energy below 150 Hz in its drops is in `drums`).
@@ -193,8 +191,9 @@ the arrays themselves. Queries are vectorized over an array of times:
    attack, but their strength follows the attack only (also with ADTOF,
    decision 0016). Taking `kick` from
    drums + bass was tried and rejected: every bass note became a kick
-   (3–5 per beat). The body shows in `env("bass")` and in `bass` onsets.
+   (3–5 per beat). The body shows in `env("bass")`.
 3. Whether 24 bands is enough for the large build's `spectrogram`
    (frequency across x on a wide display); bands are computed from the
    stored STFT settings, so more bands is only a version bump.
-4. Whether `vocals` and `other` onsets are useful enough to keep.
+4. ~~Whether `vocals` and `other` onsets are useful enough to keep~~: not
+   kept (decision 0017).

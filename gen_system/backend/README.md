@@ -37,13 +37,12 @@ uv run python -m volu_gen.analysis --all          # every stored track
   beats, chime on phrase starts, a second higher chime on drops) and Audacity label files (File → Import →
   Labels). Check any change to grid or phrase rules by ear with these.
   With features built it also writes `check/onsets_<class>.wav` per onset
-  class (kick, snare, tom, hat, cymbal, bass, other, vocals): the source stem with a
-  click per onset, louder for stronger ones.
+  class (kick, hat): the drums stem with a click per onset, louder for stronger ones.
 - `--vram-limit-gb 8` emulates the 8 GB target card.
 - `--stages peaks` (re)builds only the waveform peaks from stored stems
   (CPU, ~1–3 s/track); they are redone automatically when stems are newer.
 - `--stages features` (re)builds only the stem features (envelopes,
-  spectra, stereo width, onsets; CPU, ~20 s for a 6-min track), redone the
+  spectra, stereo width, kick/hat onsets; CPU, ~16 s for a 6.6-min track), redone the
   same way.
 - `--override BPM DOWNBEAT_S` sets a user grid on one analyzed track (time
   of any downbeat); `--clear-override` returns to the fit. Only the

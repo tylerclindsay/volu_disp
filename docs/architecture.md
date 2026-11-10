@@ -503,7 +503,7 @@ size and can delete them.
 | `stems/vocals.flac`, `drums.flac`, `bass.flac`, `other.flac` | demucs `htdemucs` stems, stereo, 44.1 kHz (`BASE_SR`), FLAC | `stems` stage | ~45–180 MB per track total; the bulk of the directory |
 | `analysis.json` | Tempo/grid (incl. the user `override`), sections, phrases, events, per-bar energy, genre, mood, model ids. Schema: decision 0004 | model stages + `phrases`; `regrid` jobs | ~30 KB |
 | `peaks.npz` | min/max/rms pyramid for the mix and four stems, int16. Format: decision 0006 | `peaks` stage | ~16 KB per second of audio |
-| `features.npz` | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists (kick / snare / tom / hat / cymbal from the drums stem via ADTOF, decision 0016; bass, other, vocals). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~8 MB for a 6.6-min track |
+| `features.npz` | Stem features for generators: per-lane envelopes (300 Hz), 24-band spectra and stereo width (100 Hz), onset lists for kick and hat from the drums stem via ADTOF (decisions 0016, 0017). Fixed rates, independent of the display FPS and the grid. Format: decision 0012 | `features` stage (CPU, after `peaks`) | ~8 MB for a 6.6-min track |
 | `check/` | Listening aids: `clicks.wav`, `onsets_<class>.wav`, Audacity `labels_*.txt` | `analysis/checks.py`, on request | dev only; never read by the system; safe to delete |
 
 - The decoded mix is **not** stored: `source.<ext>` is decoded whenever
@@ -683,8 +683,9 @@ Former open questions, now part of the design above:
   orphaned ones (Storage layout → `data/tracks/<key>/`).
 - **Stem features** (`features.npz`, `decisions/0012-stem-features.md`):
   a CPU analysis stage after `peaks`, at fixed rates independent of the
-  display FPS and the grid. Drum onsets come from the ADTOF drum
-  transcription model on the drums stem (`decisions/0016-drum-onsets-adtof.md`).
+  display FPS and the grid. Onsets (kick and hat only) come from the ADTOF
+  drum transcription model on the drums stem
+  (`decisions/0016-drum-onsets-adtof.md`, `decisions/0017-kick-and-hat-onsets-only.md`).
 
 ## Open questions
 1. **Generator interface** — design in progress in `generators.md`: a

@@ -9,7 +9,7 @@ import numpy as np
 import soundfile as sf
 
 from .audio import BASE_SR
-from .features import CLASS_SOURCE, read_features
+from .features import read_features
 from .track import TrackDir
 
 
@@ -59,23 +59,20 @@ def write_click_track(path: Path, audio: np.ndarray, tempo: dict, phrases: list[
 
 
 def write_onset_checks(t: TrackDir):
-    """Per onset class (decision 0012): `onsets_<class>.wav`, the class's
-    source stem at -6 dB with a click per onset (louder = stronger), and
+    """Per onset class (decisions 0012, 0017): `onsets_<class>.wav`, the
+    drums stem at -6 dB with a click per onset (louder = stronger), and
     `labels_onsets_<class>.txt` with each onset's strength."""
     f = read_features(t.features_path)
     out_dir = t.dir / "check"
     out_dir.mkdir(exist_ok=True)
     n = int(0.02 * BASE_SR)
     click = np.sin(2 * np.pi * 2000 * np.arange(n) / BASE_SR) * np.exp(-np.arange(n) / (0.004 * BASE_SR))
-    stems = {}
+    drums = t.stem("drums").mean(axis=0)
     for name in f["classes"]:
         times, strengths = f["onsets"][name]
         write_labels(out_dir / f"labels_onsets_{name}.txt",
                      [(x, x, f"{s:.2f}") for x, s in zip(times, strengths)])
-        source = CLASS_SOURCE[name]
-        if source not in stems:
-            stems = {source: t.stem(source).mean(axis=0)}  # one stem in memory at a time
-        out = stems[source] * 0.5
+        out = drums * 0.5
         for x, s in zip(times, strengths):
             i = int(x * BASE_SR)
             seg = out[i:i + n]

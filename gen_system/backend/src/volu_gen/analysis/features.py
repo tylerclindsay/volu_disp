@@ -1,7 +1,7 @@
 """Stem features for generators (decision 0012): per-lane RMS envelopes,
-band spectra and stereo width at fixed rates, and onset lists per class.
-Drum onsets come from the ADTOF drum transcription model on the drums stem
-(decision 0016). All times are seconds in the BASE_SR decode, independent
+band spectra and stereo width at fixed rates, and kick and hat onset lists
+from the ADTOF drum transcription model on the drums stem (decisions 0016,
+0017). All times are seconds in the BASE_SR decode, independent
 of the display FPS and the beat grid. Stored as features.npz in the
 track's data dir.
 """
@@ -11,19 +11,17 @@ from __future__ import annotations
 import contextlib
 import io
 from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 from scipy import fft
-from scipy.ndimage import maximum_filter1d, median_filter
 from scipy.signal.windows import hann
 
 from .audio import BASE_SR
 from .peaks import LANES
 
-FEATURES_VERSION = 2
+FEATURES_VERSION = 3
 ENV_HOP = 147           # 300 Hz, the peaks level-0 bucket
 ENV_WIN = 441           # 10 ms Hann
 SPEC_HOP = 441          # 100 Hz
@@ -35,31 +33,13 @@ ONSET_FFT = 1024
 SILENCE = 1e-3          # -60 dBFS RMS: quieter frames are silent (env_ref, width)
 DB_FLOOR = -120.0       # spectrum dB of a silent band
 ONSET_LAG = 3           # flux frame difference: 10 ms, so the rise outweighs ripple
-LOCAL_S = 0.5           # onset thresholds: moving median and moving max over this span
 CHUNK = 2048            # STFT frames per block, to bound memory
 ADTOF_FPS = 100         # ADTOF activation frames; frame k at k / 100 s
 SNAP = (-0.02, 0.04)    # drum hit snap window around an ADTOF peak (it reads ~10-20 ms early)
 
 
-@dataclass(frozen=True)
-class OnsetClass:
-    name: str
-    source: str             # lane
-    lo: float               # band, Hz
-    hi: float
-    gap: float              # min seconds between onsets
-    delta: float = 0.02     # above the moving median, in units of the band's loud magnitude (tune)
-    local: float = 0.3      # and at least this fraction of the moving max (tune)
-
-
 DRUM_CLASSES = ["kick", "snare", "tom", "hat", "cymbal"]  # ADTOF's outputs, in its order
-ONSET_CLASSES = [
-    OnsetClass("bass", "bass", 0.0, BASE_SR / 2, 0.080),
-    OnsetClass("other", "other", 0.0, BASE_SR / 2, 0.050),
-    OnsetClass("vocals", "vocals", 0.0, BASE_SR / 2, 0.080),
-]
-CLASSES = DRUM_CLASSES + [c.name for c in ONSET_CLASSES]
-CLASS_SOURCE = {**{c: "drums" for c in DRUM_CLASSES}, **{c.name: c.source for c in ONSET_CLASSES}}
+CLASSES = ["kick", "hat"]  # the onsets kept: the others weren't reliable (decision 0017)
 
 
 def band_edges() -> np.ndarray:
@@ -197,31 +177,6 @@ def onset_flux(audio: np.ndarray, n_samples: int, bands: list[tuple[float, float
     return flux
 
 
-def pick_onsets(flux: np.ndarray, hop_s: float, gap_s: float, delta: float, local: float,
-                local_s: float = LOCAL_S) -> tuple[np.ndarray, np.ndarray]:
-    """Local maxima of normalized flux (`onset_flux`) above both the moving
-    median + delta and `local` × the moving max, at least gap_s apart (the
-    stronger of two close peaks wins). The moving max drops the small bumps
-    that follow a hit in its decay. Returns sorted times (s) and strengths:
-    peak / 95th percentile of the kept peaks, clipped to 1."""
-    if len(flux) < 3:
-        return np.zeros(0), np.zeros(0, np.float32)
-    size = int(round(local_s / hop_s)) | 1
-    thr = np.maximum(median_filter(flux, size=size, mode="nearest") + delta,
-                     local * maximum_filter1d(flux, size=size, mode="nearest"))
-    c = flux[1:-1]
-    cand = np.flatnonzero((c >= flux[:-2]) & (c > flux[2:]) & (c > thr[1:-1])) + 1
-    gap = max(1, int(round(gap_s / hop_s)))
-    blocked = np.zeros(len(flux), bool)
-    keep = []
-    for i in cand[np.argsort(-flux[cand], kind="stable")]:
-        if not blocked[i]:
-            keep.append(i)
-            blocked[max(0, i - gap + 1):i + gap] = True
-    keep = np.sort(np.array(keep, int))
-    return keep * hop_s, _strengths(flux[keep])
-
-
 def _strengths(peaks: np.ndarray) -> np.ndarray:
     """Peaks / their 95th percentile, clipped to 1."""
     ref = np.percentile(peaks, 95) if len(peaks) else 1.0
@@ -253,7 +208,7 @@ def adtof_activations(drums: np.ndarray) -> np.ndarray:
 
 def drum_hits(drums: np.ndarray, n_samples: int,
               activations: Callable[[np.ndarray], np.ndarray] | None = None) -> dict:
-    """{class: (times, strengths)} for DRUM_CLASSES. ADTOF decides what hit
+    """{class: (times, strengths)} for CLASSES. ADTOF decides what hit
     and roughly when (its peak picking and thresholds); each hit then moves
     to the strongest full-band flux peak of the drums stem within SNAP,
     since ADTOF's 10 ms frames read ~10-20 ms early. Strength is that flux
@@ -263,7 +218,8 @@ def drum_hits(drums: np.ndarray, n_samples: int,
     flux = onset_flux(drums, n_samples, [(0.0, BASE_SR / 2)])[0]
     hop = ONSET_HOP / BASE_SR
     out = {}
-    for i, name in enumerate(DRUM_CLASSES):
+    for name in CLASSES:
+        i = DRUM_CLASSES.index(name)
         picker = NotePeakPickingProcessor(threshold=FRAME_RNN_THRESHOLDS[i], pre_avg=0.1, post_avg=0.01,
                                           pre_max=0.02, post_max=0.01, combine=0.02, fps=ADTOF_FPS)
         frames = set()
@@ -302,17 +258,13 @@ def compute_features(load: Callable[[str], np.ndarray], n_samples: int,
         env_ref[li] = loud_level(env[li])
         spec[li], width[li] = spectrum_width(a, n_samples)
         if lane == "drums":
-            onsets.update(drum_hits(a, n_samples, drum_activations))
-        cls = [c for c in ONSET_CLASSES if c.source == lane]
-        if cls:
-            for c, fl in zip(cls, onset_flux(a, n_samples, [(c.lo, c.hi) for c in cls])):
-                onsets[c.name] = pick_onsets(fl, ONSET_HOP / BASE_SR, c.gap, c.delta, c.local)
+            onsets = drum_hits(a, n_samples, drum_activations)
         del a
     return {"version": FEATURES_VERSION, "sample_rate": BASE_SR, "env_hop": ENV_HOP,
             "spec_hop": SPEC_HOP, "n_fft": SPEC_FFT, "band_edges": band_edges(),
             "n_samples": int(n_samples), "lanes": list(LANES), "classes": list(CLASSES),
             "env": env, "env_ref": env_ref, "spec": spec, "width": width,
-            "onsets": {k: onsets[k] for k in CLASSES}}
+            "onsets": onsets}
 
 
 def write_features(path: Path, f: dict):

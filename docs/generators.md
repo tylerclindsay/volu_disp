@@ -67,9 +67,9 @@ drive most of them visibly.
 | Method | Idea | Driven by (examples) |
 |---|---|---|
 | `spectrogram` | 3D spectrogram: frequency across x, amplitude as height, history scrolling back through the slices (z) | band spectrum; kick → flash of the newest slice |
-| `raindrops` | A "sea" surface of pixels at some height; drops land and spread ripples | onsets spawn drops; kick → big drop; bass → swell height |
+| `raindrops` | A "sea" surface of pixels at some height; drops land and spread ripples | hats spawn drops; kick → big drop; bass → swell height |
 | `rain` | Falling streaks | density from energy; kick → gust or flash |
-| `fireworks` | Launches, bursts into expanding shells that fall under gravity | snares/accents launch; kick → burst; drops → volley |
+| `fireworks` | Launches, bursts into expanding shells that fall under gravity | accents (phrases, bars) launch; kick → burst; drops → volley |
 | `strobe` | Full display or alternating slices, on beats or subdivisions | beat grid; drops only by default (see Smoothness) |
 | `static` | TV-style noise, colorful or black and white | bass → density / brightness |
 | `geometry` | Basic shapes (cube, sphere, torus, …) spinning smoothly and moving around | kick → scale pulse; bass → glow |
@@ -293,10 +293,11 @@ decoded lazily, only when a method in the worker asks for samples.
 **`features.npz`** — needed from the start, since kicks and bass drive most
 methods. A new CPU stage `features` in analysis (full spec in
 `decisions/0012-stem-features.md`):
-- onsets with strength: `kick` / `snare` / `tom` / `hat` / `cymbal`
-  recognized on the drums stem by a drum transcription model
-  (`decisions/0016-drum-onsets-adtof.md`), plus note onsets for `bass`,
-  `other`, `vocals`
+- onsets with strength: `kick` and `hat` only, recognized on the drums
+  stem by a drum transcription model
+  (`decisions/0016-drum-onsets-adtof.md`); the other drum classes and the
+  `bass` / `other` / `vocals` onsets were not reliable and are not stored
+  (`decisions/0017-kick-and-hat-onsets-only.md`)
 - envelopes per lane (mix + four stems, RMS, 300 Hz), unsmoothed, with
   each lane's loud level so `Music` can normalize them
 - a 24-band log-frequency spectrum (40 Hz – 16 kHz, 100 Hz) **per stem

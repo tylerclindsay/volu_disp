@@ -3,14 +3,13 @@ import os
 import numpy as np
 import pytest
 import soundfile as sf
-from scipy.signal import butter, sosfiltfilt
 
 from volu_gen.analysis import features as F
 from volu_gen.analysis.audio import BASE_SR, STEM_NAMES
 from volu_gen.analysis.features import (ADTOF_FPS, CLASSES, DRUM_CLASSES, ENV_HOP, FEATURES_VERSION, LANES,
                                         N_BANDS, ONSET_HOP, SILENCE, SPEC_HOP, band_edges, band_weights,
                                         compute_features, drum_hits, envelope, loud_level, onset_flux,
-                                        pick_onsets, read_features, spectrum_width, write_features)
+                                        read_features, spectrum_width, write_features)
 from volu_gen.analysis.pipeline import _needs_features, run_features
 from volu_gen.analysis.track import TrackDir, import_track
 
@@ -102,35 +101,6 @@ def test_spectrum_silence_floor():
     assert (spec == F.DB_FLOOR).all()
 
 
-def test_pick_onsets_gap_threshold_and_strength():
-    hop = ONSET_HOP / BASE_SR
-    flux = np.zeros(3000)
-    flux[[300, 310, 900, 1500, 1515, 2100]] = [1.0, 2.0, 1.5, 0.5, 0.2, 0.01]
-    t, s = pick_onsets(flux, hop, gap_s=0.06, delta=0.02, local=0.3)
-    # 300 and 310 are closer than 60 ms: the stronger (310) wins. 1515 is
-    # under 0.3 × the 1500 peak; 2100 is under delta.
-    np.testing.assert_allclose(t, np.array([310, 900, 1500]) * hop)
-    assert s.dtype == np.float32 and s.max() == 1 and (s > 0).all()
-    assert s[0] > s[1] > s[2]
-    empty_t, empty_s = pick_onsets(np.zeros(100), hop, 0.06, 0.02, 0.3)
-    assert len(empty_t) == len(empty_s) == 0
-
-
-def test_band_onsets_found_at_their_times():
-    n = 4 * BASE_SR
-    lows = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
-    highs = [0.75, 1.25, 1.75, 2.25, 2.75, 3.25]
-    # High-passed noise hits stay out of the low band (and the low hits have no highs).
-    hi = sosfiltfilt(butter(4, 7000, "high", fs=BASE_SR, output="sos"), hits(n, highs, 0, 0.01, 0.3, noise=True))
-    audio = (hits(n, lows, 60, 0.08) + hi).astype(np.float32)
-    fl, fh = onset_flux(audio, n, [(30, 150), (6000, 16000)])
-    hop = ONSET_HOP / BASE_SR
-    tl, _ = pick_onsets(fl, hop, 0.06, 0.02, 0.3)
-    th, _ = pick_onsets(fh, hop, 0.03, 0.02, 0.3)
-    np.testing.assert_allclose(tl, lows, atol=0.012)
-    np.testing.assert_allclose(th, highs, atol=0.012)
-
-
 def fake_activations(n: int, peaks: dict[str, list[float]]):
     """A stand-in drum model: probability 1 at each given time per class."""
     def act(drums):
@@ -144,20 +114,16 @@ def fake_activations(n: int, peaks: dict[str, list[float]]):
 def test_drum_hits_snap_to_the_attack_and_merge():
     n = 3 * BASE_SR
     drums = hits(n, [0.5, 1.0], 60, 0.08) + hits(n, [2.0], 60, 0.08, amp=0.2)
-    # Model peaks 10-20 ms early (as ADTOF reads), two snare peaks on one
-    # attack, and a cymbal peak with no attack within the snap window.
-    act = fake_activations(n, {"kick": [0.49, 0.98, 1.99], "snare": [0.99, 1.01], "cymbal": [1.5]})
+    # Model peaks 10-20 ms early (as ADTOF reads), two kick peaks on one
+    # attack, and a snare and cymbal that aren't kept.
+    act = fake_activations(n, {"kick": [0.49, 0.98, 0.99, 1.99], "snare": [1.01], "cymbal": [1.5]})
     h = drum_hits(drums, n, act)
-    assert list(h) == DRUM_CLASSES
+    assert list(h) == CLASSES == ["kick", "hat"]  # snare and cymbal are found but not kept
     np.testing.assert_allclose(h["kick"][0], [0.5, 1.0, 2.0], atol=0.005)
-    np.testing.assert_allclose(h["snare"][0], [1.0], atol=0.005)
     # Strength is loudness: the quiet third kick is weaker.
     assert h["kick"][1][2] < 0.5 * h["kick"][1][0]
     assert h["kick"][1].dtype == np.float32 and h["kick"][1].max() <= 1
-    # No attack near 1.5 s: the cymbal stays at the flux maximum of its
-    # window, which is no earlier than the window start.
-    assert len(h["cymbal"][0]) == 1 and h["cymbal"][0][0] >= 1.5 + F.SNAP[0] - 0.004
-    assert len(h["tom"][0]) == len(h["hat"][0]) == 0
+    assert len(h["hat"][0]) == 0
 
 
 def test_adtof_finds_synthetic_kicks():
@@ -168,16 +134,17 @@ def test_adtof_finds_synthetic_kicks():
     assert act.shape == (1 + n // (BASE_SR // ADTOF_FPS), len(DRUM_CLASSES))
     h = drum_hits(hits(n, kicks, 60, 0.08), n)
     np.testing.assert_allclose(h["kick"][0], kicks, atol=0.006)
-    assert all(len(h[c][0]) == 0 for c in DRUM_CLASSES if c != "kick")
+    assert len(h["hat"][0]) == 0
 
 
-def test_onsets_ignore_steady_tone_and_bleed():
+def test_flux_ignores_steady_tone_and_bleed():
     n = 3 * BASE_SR
     a = sine(n, 100, 0.5)
     a[:, :BASE_SR // 2] = 0
     fl, = onset_flux(a, n, [(30, 150)])
-    t, _ = pick_onsets(fl, ONSET_HOP / BASE_SR, 0.06, 0.02, 0.3)
-    np.testing.assert_allclose(t, [0.5], atol=0.012)  # the start only
+    t = np.arange(len(fl)) * ONSET_HOP / BASE_SR
+    assert t[np.argmax(fl)] == pytest.approx(0.5, abs=0.012)  # the start
+    assert fl[(t > 0.6) & (t < 2.9)].max() < 0.01 * fl.max()  # not the steady tone (nor the cut at the end)
     # A band that never gets above -60 dBFS (stem bleed) has no onsets.
     quiet = hits(n, [0.5, 1.0, 1.5], 60, 0.08, amp=5e-4)
     fl, = onset_flux(quiet, n, [(30, 150)])

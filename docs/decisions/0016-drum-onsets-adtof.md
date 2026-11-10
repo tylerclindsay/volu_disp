@@ -3,7 +3,8 @@
 Date: 2026-11-10. Status: accepted; built
 (`gen_system/backend/src/volu_gen/analysis/features.py` → `drum_hits`,
 `tests/test_features.py`). Replaces the band onset classes `kick` /
-`snare` / `hat` of decision 0012; the rest of 0012 stands.
+`snare` / `hat` of decision 0012; the rest of 0012 stands. Only `kick` and
+`hat` are stored now (`0017-kick-and-hat-onsets-only.md`).
 
 ## Context
 Decision 0012 found drum onsets as spectral-flux peaks in three frequency
@@ -85,12 +86,13 @@ Known mistakes:
   (non-commercial, share-alike); the converted weights carry that over.
   Fine for a personal, non-commercial build; any commercial use needs
   another model.
-- Methods can now treat `kick` / `snare` as real drum labels, not low / mid
-  band hits.
+- Methods can now treat `kick` as a real drum label, not a low band hit
+  (`snare` was later dropped as unreliable, decision 0017).
 
 ## Open questions
 1. Hardstyle double kicks: a "no second kick within one 16th unless at
    least as strong" rule would likely drop them without touching real kick
    rolls. Check by ear before adding (gen_system/AGENTS.md → tune for the
    common case).
-2. Whether the lost cymbals matter to any method.
+2. ~~Whether the lost cymbals matter to any method~~: cymbals are no longer
+   stored (decision 0017).

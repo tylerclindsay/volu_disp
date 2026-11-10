@@ -81,10 +81,11 @@ track, not in analysis.json). Key rules:
   transformers 5.x. Python 3.11, torch 2.11 cu128.
 - Stem features (`features.npz`, `../docs/decisions/0012-stem-features.md`):
   a CPU stage after `peaks`, at fixed rates. It does not re-run on a grid
-  override or a display FPS change. Drum onsets (kick, snare, tom, hat,
-  cymbal) come from the ADTOF drum transcription model on the drums stem,
-  not frequency bands (`../docs/decisions/0016-drum-onsets-adtof.md`);
-  `bass` / `other` / `vocals` are flux onsets. Check any onset change by
+  override or a display FPS change. Onsets are stored for `kick` and `hat`
+  only, from the ADTOF drum transcription model on the drums stem, not
+  frequency bands (`../docs/decisions/0016-drum-onsets-adtof.md`); the
+  other classes weren't reliable (`../docs/decisions/0017-kick-and-hat-onsets-only.md`).
+  Check any onset change by
   ear with the `--check` click tracks (`onsets_<class>.wav`); counts per
   beat can look right while the hits are wrong.
 
