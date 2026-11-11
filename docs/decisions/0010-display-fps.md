@@ -1,8 +1,12 @@
 # 0010 — Display FPS: any whole number from 30 to 480, set in the UI
 
-Date: 2026-11-09, revised the same day. Status: accepted; not yet
-implemented. Design in `../architecture.md` → Engine (Clock), Main flows
-6, Storage layout → `animations/` (Lifecycle), Settled.
+Date: 2026-11-09, revised the same day. Status: accepted; partly
+implemented: the setting and its checks, FPS re-render jobs and the
+confirmation counts (`gen_system/backend/src/volu_gen/server/`), and
+renders at the display FPS (`worker/`). The engine side and the cancel
+of a running render are still to come. Design in `../architecture.md` →
+Engine (Clock), Main flows 6, Storage layout → `animations/` (Lifecycle),
+Settled.
 
 ## Context
 The drafts assumed one fixed render rate (`timing.max_fps: 120` in the

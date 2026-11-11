@@ -68,9 +68,9 @@ uv run volu serve --display ../../config/displays/prototype.yaml
 ```
 Serves the UI API on `http://127.0.0.1:8770/api` (schema at `/docs`). It
 keeps its state in `../../data/volu.db` (`--data` for another data dir).
-Imports queue `analyze` jobs, but nothing runs them until the worker
-exists, so a track added through the server stays `pending` and can't be
-planned yet. Tracks the CLI analyzed show as orphaned directories until
+Imports queue `analyze` jobs, but nothing runs them until the server's
+link to the worker exists, so a track added through the server stays
+`pending` and can't be planned yet. Tracks the CLI analyzed show as orphaned directories until
 they are added through the server.
 
 ## Worker

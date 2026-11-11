@@ -88,6 +88,25 @@ def test_spec_checks():
         Progress(job_id=1, stage="x", frac=1.5)
 
 
+@pytest.mark.parametrize("path", ["/abs/r1.anim", "C:/data/r1.anim", "C:r1.anim", "\\\\host\\share\\r1.anim",
+                                  "tracks/../../r1.anim", "tracks\\..\\r1.anim", ""])
+def test_paths_are_relative_to_the_data_dir(path):
+    for make in (lambda: Load(slot="current", track_id=1, audio_path=path, anim_path="a"),
+                 lambda: Load(slot="current", track_id=1, audio_path="a", anim_path=path),
+                 lambda: SwapAnim(anim_path=path), lambda: Released(anim_path=path),
+                 lambda: RenderSpec(**{**RENDER.model_dump(), "anim_path": path})):
+        with pytest.raises(ValueError, match="relative to the data dir"):
+            make()
+
+
+def test_preview_bytes():
+    """The header is frame index and track id, int64 little-endian (−1: no
+    track), then RGB in geometry order."""
+    rgb = np.array([[1, 2, 3], [4, 5, 6]], np.uint8)
+    assert encode_preview(258, 7, rgb) == bytes.fromhex("0201000000000000" "0700000000000000" "010203040506")
+    assert encode_preview(0, None, rgb[:0]) == bytes.fromhex("0000000000000000" "ffffffffffffffff")
+
+
 def test_preview():
     rgb = np.arange(30, dtype=np.uint8).reshape(10, 3)
     p = decode_preview(encode_preview(1234, 7, rgb))
@@ -128,6 +147,29 @@ def test_router_dealer(ctx):
         assert not send_to(router, b"nobody", Log(line="x"))   # absent peer: dropped, no exception
     finally:
         dealer.close()
+        router.close()
+
+
+def test_reconnect_takes_over_the_routing_id(ctx):
+    """A restarted server's DEALER (same routing id) replaces the old
+    connection (ROUTER_HANDOVER): replies go to the new one."""
+    port = free_port()
+    router = bind_router(ctx, port)
+    old = connect_dealer(ctx, port)
+    new = None
+    try:
+        old.send(encode(Hello()))
+        assert router.poll(2000) and router.recv_multipart()[0] == b"server"
+        new = connect_dealer(ctx, port)                        # connects after the old one, as a restart does
+        new.send(encode(Hello()))
+        assert router.poll(2000) and router.recv_multipart()[0] == b"server"
+        assert send_to(router, b"server", WorkerHello(pid=1))
+        assert new.poll(2000) and decode(FROM_WORKER, new.recv()) == WorkerHello(pid=1)
+        assert not old.poll(200)
+    finally:
+        old.close()
+        if new is not None:
+            new.close()
         router.close()
 
 

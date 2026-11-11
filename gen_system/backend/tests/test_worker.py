@@ -1,3 +1,4 @@
+import copy
 import threading
 import time
 
@@ -8,15 +9,19 @@ from test_methods import GEO
 from test_methods import analysis as method_analysis
 from test_methods import features as method_features
 
+from volu_gen.analysis import pipeline
+from volu_gen.analysis.audio import STEM_NAMES
 from volu_gen.analysis.features import write_features
 from volu_gen.analysis.grid import grid_times
-from volu_gen.analysis.track import import_track
+from volu_gen.analysis.track import TrackDir, import_track
 from volu_gen.animfile import FORMAT_VERSION, AnimReader
 from volu_gen.animfile import tmp_path as anim_tmp_path
-from volu_gen.generators import DIRECTOR_VERSION, GENERATOR_ID, DirectorParams, Music, RenderCancelled, make_plan
+from volu_gen.generators import (DIRECTOR_VERSION, GENERATOR_ID, DirectorParams, Music, RenderCancelled, StalePlan,
+                                 make_plan)
 from volu_gen.ipc import (FROM_WORKER, AnalyzeSpec, Cancel, Cancelled, Done, Failed, Hello, Log, Progress,
                           RegridSpec, RenderSpec, Submit, WorkerHello, connect_dealer, decode, encode)
 from volu_gen.worker import JobEnv, JobError, Worker, run_analyze, run_regrid, run_render
+from volu_gen.worker.worker import PROGRESS_INTERVAL
 
 FPS = 30
 
@@ -80,6 +85,21 @@ def test_render_refuses(data, key, over, match):
     assert not list(data.rglob("*.anim*"))
 
 
+@pytest.mark.parametrize("stale", ["director", "method"])
+def test_render_refuses_a_stale_plan(data, key, stale):
+    """The worker renders exactly the plan it gets; re-planning is the
+    server's (decision 0018)."""
+    spec = render_spec(key)
+    plan = copy.deepcopy(spec.plan)
+    if stale == "director":
+        plan["director"]["version"] = DIRECTOR_VERSION + 1
+    else:
+        plan["segments"][0]["method_version"] += 1
+    with pytest.raises(StalePlan):
+        run_render(spec.model_copy(update={"plan": plan}), JobEnv(data, GEO))
+    assert not list(data.rglob("*.anim*"))
+
+
 def test_render_cancel_leaves_no_file(data, key):
     calls = []
 
@@ -104,6 +124,25 @@ def test_analyze_checks_stages(data, key):
         run_analyze(AnalyzeSpec(key=key, stages=["stems", "colour"]), JobEnv(data, GEO))
     with pytest.raises(JobError, match="unknown stages"):
         run_analyze(AnalyzeSpec(key=key, force=["nope"]), JobEnv(data, GEO))
+
+
+def test_analyze_stops_at_the_first_failed_stage(data, key, monkeypatch):
+    t = TrackDir(data / "tracks" / key)
+    for name in STEM_NAMES:   # stand-ins: the stages that read them are replaced below
+        t.stem_path(name).parent.mkdir(exist_ok=True)
+        t.stem_path(name).write_bytes(b"")
+    ran = []
+
+    def peaks(track):
+        raise RuntimeError("peaks broke")
+
+    monkeypatch.setattr(pipeline, "run_peaks", peaks)
+    monkeypatch.setattr(pipeline, "run_features", lambda track: ran.append("features"))
+    seen = []
+    env = JobEnv(data, GEO, device="cpu", log=lambda line: None, progress=lambda *a: seen.append(a[:3]))
+    with pytest.raises(RuntimeError, match="peaks broke"):
+        run_analyze(AnalyzeSpec(key=key, stages=["peaks", "features"]), env)
+    assert ran == [] and seen == [("peaks", t.name, 0.0)]
 
 
 # -- the process
@@ -185,8 +224,8 @@ def test_hello_and_render(serve, ctx, data, key):
         done = msgs[-1]
         assert done.job_id == 7 and done.result.frame_count == 600
         assert (data / done.result.anim_path).exists()
-        progress = [m for m in msgs if isinstance(m, Progress)]
-        assert progress and all(m.job_id == 7 and m.stage == "render" for m in progress)
+        # a render this small can finish inside one progress interval, and its result drops the waiting progress
+        assert all(m.job_id == 7 and m.stage == "render" for m in msgs if isinstance(m, Progress))
         c.send(Hello())
         assert c.recv().job_id is None
     finally:
@@ -291,16 +330,42 @@ def test_exits_without_a_server(serve, ctx):
 
 
 def test_progress_is_latest_only(data, key):
+    """At most one progress per PROGRESS_INTERVAL, the newest; a result
+    drops its job's waiting progress."""
     w = Worker(data, GEO, free_port(), server_timeout=0, log=lambda line: None)
+
+    def prog(frac):
+        return Progress(job_id=1, stage="render", frac=frac)
+
     try:
         sent = []
         w._server = b"server"
         w._send = lambda m: sent.append(m) or True
         for i in range(5):
-            w._outbox.put(Progress(job_id=1, stage="render", frac=i / 4))
+            w._outbox.put(prog(i / 4))
         w._outbox.put(Log(line="x"))
-        w._outbox.put(Progress(job_id=1, stage="render", frac=1.0))
+        w._outbox.put(prog(1.0))
         w._flush()
-        assert sent == [Log(line="x"), Progress(job_id=1, stage="render", frac=1.0)]
+        assert sent == [Log(line="x"), prog(1.0)]
+        w._outbox.put(prog(0.1))
+        w._flush()
+        w._outbox.put(prog(0.2))
+        w._flush()
+        assert sent == [Log(line="x"), prog(1.0)]               # too soon: waits
+        time.sleep(2 * PROGRESS_INTERVAL)   # monotonic() ticks ~16 ms on Windows
+        w._flush()
+        assert sent[2:] == [prog(0.2)]                          # the newest of the two
+        time.sleep(2 * PROGRESS_INTERVAL)   # monotonic() ticks ~16 ms on Windows
+        w._outbox.put(prog(0.3))
+        w._outbox.put(Cancelled(job_id=1))
+        w._flush()
+        assert sent[3:] == [Cancelled(job_id=1)]
     finally:
         w.close()
+
+
+def test_cli_rejects_missing_config(tmp_path):
+    from volu_gen.worker.__main__ import main
+    with pytest.raises(SystemExit) as e:
+        main(["--display", str(tmp_path / "nope.yaml"), "--data", str(tmp_path)])
+    assert str(e.value).startswith("worker:")

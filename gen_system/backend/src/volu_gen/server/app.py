@@ -16,7 +16,7 @@ import numpy as np
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ..analysis import library_moods
 from ..analysis.peaks import level_rate
@@ -130,9 +130,10 @@ async def patch_settings(request: Request, changes: dict[str, Any] = Body()) -> 
 
 
 def _queue_mismatches(s: Server, fps: int) -> list:
-    """Active versions of queued tracks that are rendered at another rate."""
+    """Active versions of queued tracks that are rendered at another rate
+    (with the track's duration)."""
     return s.db.execute(
-        "SELECT DISTINCT v.* FROM play_queue q JOIN tracks t ON t.id = q.track_id "
+        "SELECT DISTINCT v.*, t.duration AS track_duration FROM play_queue q JOIN tracks t ON t.id = q.track_id "
         "JOIN versions v ON v.id = t.active_version_id "
         "WHERE v.anim_path IS NOT NULL AND v.fps != ?", (fps,)).fetchall()
 
@@ -140,13 +141,18 @@ def _queue_mismatches(s: Server, fps: int) -> list:
 @router.get("/settings/fps-impact")
 async def fps_impact(request: Request, fps: int) -> dict:
     """What changing the display FPS to `fps` would do, for the
-    confirmation dialog."""
+    confirmation dialog. `queue_rerender_seconds` estimates the automatic
+    re-renders from recent render times (None before the first render)."""
     s = srv(request)
     unplayable = s.db.execute("SELECT COUNT(*) FROM versions WHERE anim_path IS NOT NULL AND fps = ?",
                               (s.settings.display_fps,)).fetchone()[0] if fps != s.settings.display_fps else 0
+    mismatches = _queue_mismatches(s, fps)
+    rate = jobs.render_seconds_per_pixel_frame(s.db)
+    seconds = None if rate is None else round(
+        rate * fps * s.display.geometry.pixel_count * sum(v["track_duration"] or 0.0 for v in mismatches), 1)
     return {"fps": fps, "problems": s.display.fps_problems(fps),
             "versions_unplayable": unplayable,
-            "queue_rerenders": len(_queue_mismatches(s, fps))}
+            "queue_rerenders": len(mismatches), "queue_rerender_seconds": seconds}
 
 
 class SyncChange(BaseModel):
@@ -297,7 +303,7 @@ async def get_peaks_level(request: Request, track_id: int, level: int) -> Respon
 
 class GridOverride(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    bpm: float
+    bpm: float = Field(ge=20, le=400)
     offset: float   # time of any downbeat, s
 
 
@@ -307,8 +313,6 @@ async def set_grid(request: Request, track_id: int, grid: GridOverride) -> dict:
     job; the draft is re-planned when it finishes."""
     s = srv(request)
     row = _analyzed(s, track_id)
-    if not 20 <= grid.bpm <= 400:
-        raise HTTPException(422, "bpm must be from 20 to 400")
     return {"job_id": jobs.queue_regrid(s.db, track_id, row["key"], grid.bpm, grid.offset)}
 
 
@@ -469,6 +473,13 @@ class PresetIn(BaseModel):
     generator: str = GENERATOR_ID
     params: DirectorParams
 
+    @field_validator("generator")
+    @classmethod
+    def _known(cls, v: str) -> str:
+        if v != GENERATOR_ID:
+            raise ValueError(f"unknown generator {v!r}")
+        return v
+
 
 def _preset_out(row) -> dict:
     return {"id": row["id"], "generator": row["generator"], "name": row["name"],
@@ -481,15 +492,9 @@ async def list_presets(request: Request, generator: str = GENERATOR_ID) -> list[
         "SELECT * FROM presets WHERE generator = ? ORDER BY name", (generator,))]
 
 
-def _check_generator(generator: str):
-    if generator != GENERATOR_ID:
-        raise HTTPException(422, f"unknown generator {generator!r}")
-
-
 @router.post("/presets", status_code=201)
 async def create_preset(request: Request, p: PresetIn) -> dict:
     s = srv(request)
-    _check_generator(p.generator)
     try:
         with s.db:
             pid = s.db.execute("INSERT INTO presets (generator, name, params) VALUES (?, ?, ?)",
@@ -502,7 +507,6 @@ async def create_preset(request: Request, p: PresetIn) -> dict:
 @router.put("/presets/{preset_id}")
 async def update_preset(request: Request, preset_id: int, p: PresetIn) -> dict:
     s = srv(request)
-    _check_generator(p.generator)
     try:
         with s.db:
             n = s.db.execute("UPDATE presets SET generator = ?, name = ?, params = ? WHERE id = ?",

@@ -1,6 +1,9 @@
 # 0011 — Render planning runs in the API server
 
-Date: 2026-11-09. Status: accepted; not yet implemented. Design in
+Date: 2026-11-09. Status: accepted; implemented
+(`gen_system/backend/src/volu_gen/server/planning.py`, `POST
+/tracks/{id}/plan`). The re-plan before a render comes with the server's
+job dispatch. Design in
 `../generators.md` → Plan and `../architecture.md` → API server.
 
 ## Context

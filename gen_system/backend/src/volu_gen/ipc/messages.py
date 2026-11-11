@@ -12,8 +12,8 @@ Preview frames are not pydantic models: a fixed little-endian header
 (`encode_preview` / `decode_preview`). Each is one ZeroMQ frame, because
 CONFLATE does not support multipart messages.
 
-Paths in messages are relative to the data dir. The server gives each
-child the data dir when it starts it.
+Paths in messages are relative to the data dir (`RelPath` rejects absolute
+paths and ".."). The server gives each child the data dir when it starts it.
 
 Kept light: the engine imports this module, so no generators or analysis
 imports here. The worker validates a render's plan itself.
@@ -23,17 +23,29 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from pathlib import PureWindowsPath
 from typing import Annotated, Any, Literal, TypeVar
 
 import msgpack
 import numpy as np
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from ..geometry import MAX_FPS, MIN_FPS
+
+
+def _relative(path: str) -> str:
+    # PureWindowsPath reads both separators and catches "C:x" and "\x" as
+    # well as "/x"; any of them would replace the data dir in `data_dir / path`.
+    p = PureWindowsPath(path)
+    if not path or p.drive or p.root or ".." in p.parts:
+        raise ValueError(f"{path!r} is not a path relative to the data dir")
+    return path
+
 
 AudioMode = Literal["shared", "exclusive"]   # WASAPI output mode (decision 0009)
 Slot = Literal["current", "next"]
 Key = Annotated[str, Field(pattern=r"^[0-9a-f]{16}$")]   # track dir name: sha256[:16] of the source
+RelPath = Annotated[str, AfterValidator(_relative)]     # relative to the data dir, no ".."
 
 
 T = TypeVar("T")
@@ -88,8 +100,8 @@ class Load(Msg):
     type: Literal["load"] = "load"
     slot: Slot
     track_id: int
-    audio_path: str
-    anim_path: str
+    audio_path: RelPath
+    anim_path: RelPath
     start: float = Field(0.0, ge=0.0)
 
 
@@ -97,7 +109,7 @@ class SwapAnim(Msg):
     """Replace the current slot's animation at the playhead; audio and
     playhead stay the same."""
     type: Literal["swap_anim"] = "swap_anim"
-    anim_path: str
+    anim_path: RelPath
 
 
 class Play(Msg):
@@ -146,8 +158,8 @@ PlayState = Literal["stopped", "paused", "playing"]
 class SlotState(Msg):
     slot: Slot
     track_id: int
-    audio_path: str
-    anim_path: str
+    audio_path: RelPath
+    anim_path: RelPath
 
 
 class EngineHello(Msg):
@@ -192,7 +204,7 @@ class TrackEnded(Msg):
 class Released(Msg):
     """The engine closed this animation file: the server may delete it."""
     type: Literal["released"] = "released"
-    anim_path: str
+    anim_path: RelPath
 
 
 class EngineError(Msg):
@@ -236,7 +248,7 @@ class RenderSpec(Msg):
     kind: Literal["render"] = "render"
     key: Key
     render_id: str = Field(pattern=r"^[0-9A-Za-z_-]+$")
-    anim_path: str
+    anim_path: RelPath
     generator: str
     plan: dict[str, Any]
     fps: int = Field(ge=MIN_FPS, le=MAX_FPS)
@@ -271,7 +283,7 @@ class RenderResult(Msg):
     """The rendered file and what the version row records about it."""
     kind: Literal["render"] = "render"
     render_id: str
-    anim_path: str
+    anim_path: RelPath
     frame_count: int
     fps: int
     pixel_count: int

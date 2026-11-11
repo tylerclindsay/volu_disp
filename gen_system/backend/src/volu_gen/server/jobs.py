@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from datetime import datetime
 from enum import IntEnum
 
 from ..analysis.track import ANIM_DIR
@@ -18,6 +19,10 @@ from . import db as dbm
 
 QUEUED, RUNNING, DONE, FAILED, CANCELLED = "queued", "running", "done", "failed", "cancelled"
 OPEN = (QUEUED, RUNNING)
+# The reason of the render queued when a track's analysis finishes. It goes
+# to the front of its priority, so each imported track gets its default
+# render before the next track's analyze starts.
+DEFAULT = "default"
 
 
 class Priority(IntEnum):
@@ -95,6 +100,28 @@ def promote_track(db: sqlite3.Connection, track_id: int):
                    (int(Priority.QUEUED), track_id, QUEUED, int(Priority.QUEUED)))
 
 
+def next_job(db: sqlite3.Connection) -> sqlite3.Row | None:
+    """The queued job the worker runs next: highest priority first, a
+    default render ahead of the rest of its priority, then FIFO."""
+    return db.execute(
+        "SELECT * FROM jobs WHERE state = ? ORDER BY priority, "
+        "(kind = 'render' AND json_extract(spec, '$.reason') = ?) DESC, id LIMIT 1",
+        (QUEUED, DEFAULT)).fetchone()
+
+
+def render_seconds_per_pixel_frame(db: sqlite3.Connection, last: int = 10) -> float | None:
+    """Render time per frame per pixel over the last finished renders, for
+    estimates; None before the first."""
+    seconds = work = 0.0
+    for r in db.execute("SELECT started_at, finished_at, result FROM jobs WHERE kind = 'render' AND state = ? "
+                        "AND started_at IS NOT NULL AND finished_at IS NOT NULL AND result IS NOT NULL "
+                        "ORDER BY id DESC LIMIT ?", (DONE, last)):
+        res = dbm.loads(r["result"])
+        seconds += (datetime.fromisoformat(r["finished_at"]) - datetime.fromisoformat(r["started_at"])).total_seconds()
+        work += res["frame_count"] * res["pixel_count"]
+    return seconds / work if work else None
+
+
 def cancel(db: sqlite3.Connection, job_id: int) -> bool:
     """Cancel a queued job. False if it isn't queued (a running job is
     cancelled through the worker)."""
@@ -105,7 +132,8 @@ def cancel(db: sqlite3.Connection, job_id: int) -> bool:
 
 
 def retry(db: sqlite3.Connection, job_id: int) -> int:
-    """Queue a failed or cancelled job's work again, as a new job."""
+    """Queue a failed or cancelled job's work again, through the same rules
+    as a new request: an open job of the same work is returned instead."""
     j = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     if j is None:
         raise KeyError(f"no job {job_id}")
@@ -114,7 +142,9 @@ def retry(db: sqlite3.Connection, job_id: int) -> int:
     spec = dbm.loads(j["spec"])
     if j["kind"] == "render":
         return queue_render(db, j["version_id"], spec["reason"], Priority(j["priority"]))
-    return _insert(db, j["kind"], j["track_id"], spec, Priority(j["priority"]), j["version_id"])
+    if j["kind"] == "regrid":
+        return queue_regrid(db, j["track_id"], spec["key"], spec["bpm"], spec["offset"])
+    return queue_analyze(db, j["track_id"], spec["key"], Priority(j["priority"]))
 
 
 def as_dict(row: sqlite3.Row) -> dict:

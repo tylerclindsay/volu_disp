@@ -294,7 +294,9 @@ for each stage, which is small compared to demucs.
    stale" and manual FPS re-renders.
 
 When the `analyze` of a track finishes, its default render goes to the front
-of the import work. It runs before the `analyze` of the next track. The user
+of the import work. It runs before the `analyze` of the next track. Within a
+priority, the other jobs run in the order they were queued
+(`server/jobs.py` → `next_job`). The user
 can queue a track whose import is not finished. Then the remaining import
 work of that track (`analyze` and its default render) moves up to "render
 for a queued track". The worker never preempts a job in the middle of a run. A job
@@ -320,7 +322,8 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`. The full rationale is in
   header (frame index `int64`, track id `int64`, −1 for none) and then the
   raw RGB bytes in geometry order. It uses its own socket, so bulk data
   never delays control messages. Paths in messages are relative to the data
-  dir. The server gives each child the data dir when it starts it.
+  dir. The message models reject absolute paths and `..`. The server gives
+  each child the data dir when it starts it.
 - **Sockets:** `volu_gen/ipc/sockets.py` makes all of them. The server's
   `DEALER`s keep the routing id `server` across reconnects. The children's
   `ROUTER`s use `ROUTER_MANDATORY` (a send to an absent server fails, and
@@ -726,7 +729,7 @@ Measure it again on real renders.
 | `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI. Implemented (brightness is still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner). Implemented: the jobs (`analyze`, `regrid`, `render`) and the process (`python -m volu_gen.worker`) |
-| `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, and the job queue (HTTP API below). Still to come: job dispatch to the worker, the engine link and supervision, node detection, and the WebSocket |
+| `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, and the job queue with its order (HTTP API below). Still to come: job dispatch to the worker (the spec built when a job starts, with the re-plan of a stale plan and the segment times from the current grid; results applied to the DB; a running render cancelled on a display FPS change), file cleanup (replaced and unreferenced animation files, leftover `*.tmp` files), the engine link and supervision, node detection, and the WebSocket |
 | `ipc/` | message models, connection helpers. Implemented (decision 0007) |
 
 ## HTTP API
@@ -753,7 +756,9 @@ address is `127.0.0.1:8770`. These rules apply:
 - **Settings** change with `PATCH /settings` (only the given fields).
   `PATCH /sync` changes the offsets of the current audio device + mode.
   `GET /settings/fps-impact?fps=N` gives the counts for the confirmation
-  of a display FPS change.
+  of a display FPS change. It also gives an estimate of the time for the
+  automatic re-renders, from the times of recent renders (null before the
+  first render).
 - **A job row names its work; the server builds the spec when the job
   starts.** A render job row holds the version id, the render id, and the
   output path (picked at queue time). The plan, the fps, and the geometry

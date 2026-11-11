@@ -10,9 +10,9 @@ from test_methods import features as method_features
 from volu_gen.analysis.features import write_features
 from volu_gen.analysis.peaks import compute_peaks, write_peaks
 from volu_gen.animfile import FORMAT_VERSION
-from volu_gen.generators import DIRECTOR_VERSION, METHODS
+from volu_gen.generators import DIRECTOR_VERSION, METHODS, DirectorParams
 from volu_gen.geometry import parse_display_config
-from volu_gen.server import Display, Server, create_app
+from volu_gen.server import Display, Server, create_app, jobs
 from volu_gen.server import db as dbm
 from volu_gen.server.jobs import Priority
 
@@ -105,7 +105,8 @@ def test_settings_defaults_and_patch(client):
     assert r.status_code == 200
     assert r.json()["preview_fps"] == 50     # lowered with the display FPS
     assert client.patch("/api/settings", json={"preview_fps": 51}).status_code == 422
-    assert client.patch("/api/settings", json={"display_fps": 29}).status_code == 422
+    r = client.patch("/api/settings", json={"display_fps": 29})
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"][-1] == "display_fps"   # the UI shows it inline
     assert client.patch("/api/settings", json={"brightness": 1.5}).status_code == 422
     assert client.patch("/api/settings", json={"nope": 1}).status_code == 422
     assert client.get("/api/settings").json()["display_fps"] == 50
@@ -239,6 +240,12 @@ def test_analysis_and_peaks(client, server):
     np.testing.assert_array_equal(np.frombuffer(raw, "<i2").reshape(peaks["levels"][2].shape),
                                   peaks["levels"][2])
     assert client.get(f"/api/tracks/{tid}/peaks/99").status_code == 404
+    pending = upload(client, "b.flac", b"b")["track"]["id"]
+    partial = client.get(f"/api/tracks/{pending}/analysis").json()   # what exists so far
+    assert "source" in partial and "tempo" not in partial
+    for path in ("peaks", "peaks/0"):
+        assert client.get(f"/api/tracks/{pending}/{path}").status_code == 404
+    assert client.get("/api/tracks/999/analysis").status_code == 404
 
 
 # -- planning and versions
@@ -312,6 +319,9 @@ def test_render_queues_once_and_save_version(client, server):
     vs = client.get(f"/api/tracks/{tid}/versions").json()
     assert [(v["kind"], v["active"]) for v in vs] == [("draft", False), ("saved", True)]
     assert client.put(f"/api/tracks/{tid}/active", json={"version_id": 999}).status_code == 404
+    other = analyzed(server, client, "b.flac", b"b")
+    r = client.put(f"/api/tracks/{other}/active", json={"version_id": saved["id"]})
+    assert r.status_code == 404 and "not a version of track" in r.text
 
 
 def test_stale_and_fps_mismatch(client, server):
@@ -339,7 +349,8 @@ def test_fps_change_rerenders_queued_tracks(client, server):
         render_done(server, client.get(f"/api/tracks/{t}/versions").json()[0]["id"], 120)
     client.put("/api/queue", json={"track_ids": [a]})
     impact = client.get("/api/settings/fps-impact", params={"fps": 100}).json()
-    assert impact == {"fps": 100, "problems": [], "versions_unplayable": 2, "queue_rerenders": 1}
+    assert impact == {"fps": 100, "problems": [], "versions_unplayable": 2, "queue_rerenders": 1,
+                      "queue_rerender_seconds": None}   # no render history yet
     client.patch("/api/settings", json={"display_fps": 100})
     renders = [j for j in client.get("/api/jobs").json() if j["kind"] == "render"]
     assert [(j["track_id"], j["priority"], j["spec"]["reason"]) for j in renders] == [(a, Priority.QUEUED, "fps")]
@@ -360,15 +371,102 @@ def test_queue_promotes_import_work(client):
     assert client.put("/api/queue", json={"track_ids": [999]}).status_code == 404
 
 
+def test_queue_reorder_and_remove(client, server):
+    a, b, c = (upload(client, f"{n}.flac", n.encode())["track"]["id"] for n in "abc")
+    client.put("/api/queue", json={"track_ids": [a, b]})
+    with server.db:   # put a's job back, to see that a (already queued) isn't promoted again
+        server.db.execute("UPDATE jobs SET priority = ? WHERE track_id = ?", (int(Priority.IMPORT), a))
+    q = client.put("/api/queue", json={"track_ids": [c, a]}).json()
+    assert [x["track_id"] for x in q] == [c, a] and q[0]["animation"] == "none"
+    prio = {j["track_id"]: j["priority"] for j in client.get("/api/jobs").json()}
+    assert prio == {a: Priority.IMPORT, b: Priority.QUEUED, c: Priority.QUEUED}   # only newcomers move up
+    assert client.post("/api/queue", json={"track_id": 999}).status_code == 404
+    assert [x["track_id"] for x in client.post("/api/queue", json={"track_id": b}).json()] == [c, a, b]
+    assert client.put("/api/queue", json={"track_ids": []}).json() == []
+    assert [t["id"] for t in client.get("/api/tracks").json()] == [a, b, c]
+
+
 def test_grid_override_queues_regrid(client, server):
     t = upload(client, "a.flac", b"x")["track"]
     assert client.put(f"/api/tracks/{t['id']}/grid", json={"bpm": 128, "offset": 0.1}).status_code == 409
     tid = analyzed(server, client, "b.flac", b"y")
+    r = client.put(f"/api/tracks/{tid}/grid", json={"bpm": 500, "offset": 0.1})
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "bpm"]
     j1 = client.put(f"/api/tracks/{tid}/grid", json={"bpm": 128, "offset": 0.1}).json()["job_id"]
     j2 = client.delete(f"/api/tracks/{tid}/grid").json()["job_id"]
     regrids = [j for j in client.get("/api/jobs", params={"state": "queued"}).json() if j["kind"] == "regrid"]
     assert [j["id"] for j in regrids] == [j2] and j1 != j2      # only the latest override is queued
     assert regrids[0]["spec"]["bpm"] is None and regrids[0]["priority"] == Priority.STUDIO
+
+
+def test_rerender_active_version(client, server):
+    """Row action and bulk actions: re-render the active version in place,
+    as import work, or at play-queue priority for a queued track."""
+    t = upload(client, "a.flac", b"a")["track"]
+    assert client.post(f"/api/tracks/{t['id']}/rerender").status_code == 409   # no active version
+    assert client.post("/api/tracks/999/rerender").status_code == 404
+    tid = analyzed(server, client, "b.flac", b"b")
+    client.post(f"/api/tracks/{tid}/plan", json={})
+    [v] = client.get(f"/api/tracks/{tid}/versions").json()
+    render_done(server, v["id"], 120, generator_version=DIRECTOR_VERSION + 1)
+    assert client.get(f"/api/tracks/{tid}").json()["animation"] == "stale"
+    r = client.post("/api/tracks/rerender", json={"which": "stale"}).json()
+    [job] = [j for j in client.get("/api/jobs").json() if j["id"] in r["job_ids"]]
+    assert (job["version_id"], job["priority"], job["spec"]["reason"]) == (v["id"], Priority.IMPORT, "stale")
+    assert client.post("/api/tracks/rerender", json={"which": "stale"}).json()["job_ids"] == []   # rendering
+    client.delete(f"/api/jobs/{job['id']}")
+    client.post("/api/queue", json={"track_id": tid})
+    job = client.post(f"/api/tracks/{tid}/rerender").json()["job_id"]
+    j = next(j for j in client.get("/api/jobs").json() if j["id"] == job)
+    assert (j["version_id"], j["priority"]) == (v["id"], Priority.QUEUED)
+
+
+def test_job_order(server):
+    """Highest priority first; within a priority a default render goes
+    first (each import gets its default render before the next analyze),
+    then FIFO."""
+    lib, db = server.library, server.db
+    ids = []
+    for n in "abc":
+        path = server.data_dir / f"{n}.flac"
+        path.write_bytes(n.encode())
+        ids.append(lib.add(lib.import_file(path))[0])
+    vid = lib.set_draft_plan(ids[0], DirectorParams(), {"segments": []})
+    analyze = [r["id"] for r in db.execute("SELECT id FROM jobs ORDER BY id")]
+    assert jobs.next_job(db)["id"] == analyze[0]
+    with db:
+        db.execute("UPDATE jobs SET state = 'done' WHERE id = ?", (analyze[0],))
+    default =jobs.queue_render(db, vid, jobs.DEFAULT, Priority.IMPORT)
+    assert jobs.next_job(db)["id"] == default                 # ahead of the older analyze of b
+    jobs.promote_track(db, ids[2])
+    assert jobs.next_job(db)["id"] == analyze[2]              # c joined the play queue
+    regrid = jobs.queue_regrid(db, ids[0], lib.track(ids[0])["key"], 128.0, 0.0)
+    assert jobs.next_job(db)["id"] == regrid
+    with db:
+        db.execute("UPDATE jobs SET state = 'done'")
+    assert jobs.next_job(db) is None
+
+
+def test_fps_impact_estimates_rerender_time(client, server):
+    tid = analyzed(server, client)
+    client.post(f"/api/tracks/{tid}/plan", json={})
+    [v] = client.get(f"/api/tracks/{tid}/versions").json()
+    render_done(server, v["id"], 120)
+    client.put("/api/queue", json={"track_ids": [tid]})
+    assert client.get("/api/settings/fps-impact", params={"fps": 60}).json()["queue_rerender_seconds"] is None
+    p = server.display.geometry.pixel_count
+    # two past renders: 1000 frames in 10 s, 3000 in 50 s → 60 s / 4000 frames
+    for frames, seconds in ((1000, 10), (3000, 50)):
+        with server.db:
+            server.db.execute(
+                "INSERT INTO jobs (kind, track_id, version_id, spec, priority, state, created_at, started_at, "
+                "finished_at, result) VALUES ('render', ?, ?, '{}', 0, 'done', '', ?, ?, ?)",
+                (tid, v["id"], "2026-01-01T00:00:00+00:00", f"2026-01-01T00:00:{seconds:02d}+00:00",
+                 dbm.dumps({"frame_count": frames, "pixel_count": p})))
+    duration = client.get(f"/api/tracks/{tid}").json()["duration"]
+    impact = client.get("/api/settings/fps-impact", params={"fps": 60}).json()
+    assert impact["queue_rerenders"] == 1
+    assert impact["queue_rerender_seconds"] == pytest.approx(60 / 4000 * 60 * duration, abs=0.1)
 
 
 def test_jobs_cancel_and_retry(client, server):
@@ -382,6 +480,18 @@ def test_jobs_cancel_and_retry(client, server):
     assert states == {j["id"]: "cancelled", new: "queued"}
     assert [x["id"] for x in client.get("/api/jobs", params={"state": "queued"}).json()] == [new]
     assert t["id"] == j["track_id"]
+    assert client.post(f"/api/jobs/{j['id']}/retry").json()["job_id"] == new   # still open: the same job
+    assert client.post("/api/jobs/999/retry").status_code == 404
+    assert len(client.get("/api/jobs", params={"limit": 1}).json()) == 1
+
+
+def test_retry_regrid_replaces_a_queued_one(client, server):
+    tid = analyzed(server, client)
+    old = client.put(f"/api/tracks/{tid}/grid", json={"bpm": 128, "offset": 0.1}).json()["job_id"]
+    newer = client.delete(f"/api/tracks/{tid}/grid").json()["job_id"]
+    again = client.post(f"/api/jobs/{old}/retry").json()["job_id"]
+    states = {j["id"]: j["state"] for j in client.get("/api/jobs").json() if j["kind"] == "regrid"}
+    assert states == {old: "cancelled", newer: "cancelled", again: "queued"}   # only the latest override
 
 
 # -- presets
@@ -391,10 +501,15 @@ def test_presets(client):
     pid = p.json()["id"]
     assert client.post("/api/presets", json={"name": "calm", "params": {}}).status_code == 409
     assert client.post("/api/presets", json={"name": "x", "params": {"intensity": 9}}).status_code == 422
-    assert client.post("/api/presets", json={"name": "x", "generator": "other", "params": {}}).status_code == 422
+    r = client.post("/api/presets", json={"name": "x", "generator": "other", "params": {}})
+    assert r.status_code == 422 and r.json()["detail"][0]["loc"] == ["body", "generator"]
     r = client.put(f"/api/presets/{pid}", json={"name": "calmer", "params": {"intensity": 0.3}}).json()
     assert r["name"] == "calmer" and r["params"]["intensity"] == 0.3
     assert [x["name"] for x in client.get("/api/presets").json()] == ["calmer"]
+    assert client.get("/api/presets", params={"generator": "other"}).json() == []
+    other = client.post("/api/presets", json={"name": "loud", "params": {}}).json()["id"]
+    assert client.put(f"/api/presets/{other}", json={"name": "calmer", "params": {}}).status_code == 409
+    assert client.put("/api/presets/999", json={"name": "y", "params": {}}).status_code == 404
     assert client.delete(f"/api/presets/{pid}").status_code == 204
     assert client.delete(f"/api/presets/{pid}").status_code == 404
 

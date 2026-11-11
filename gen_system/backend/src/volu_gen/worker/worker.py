@@ -6,8 +6,9 @@ answers `hello`, starts jobs, passes `cancel` on, and sends what the job
 thread queues. The job thread only puts messages in the outbox.
 
 Delivery:
-- Progress is latest-only: when several are queued, only the newest goes
-  out, so the rate is at most one per loop (POLL_MS).
+- Progress is latest-only: at most one goes out every PROGRESS_INTERVAL
+  s, and a newer one replaces one that waits. A job's result drops its
+  waiting progress.
 - A result (`done`, `failed`, `cancelled`) that can't be sent because the
   server is gone is kept and sent before the reply to the next `hello`.
   Until its result is sent, a job counts as running: `hello` reports its
@@ -23,6 +24,7 @@ import os
 import queue
 import sys
 import threading
+import time
 import traceback
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -38,6 +40,7 @@ from ..ipc import (DEFAULT_HOST, HEARTBEAT_TIMEOUT_MS, TO_WORKER, WORKER_PORT, C
 from .jobs import RUNNERS, JobEnv
 
 POLL_MS = 50
+PROGRESS_INTERVAL = 0.05   # s: at most one progress message per interval
 RESULTS = (Done, Failed, Cancelled)
 
 
@@ -70,6 +73,8 @@ class Worker:
         self._server: bytes | None = None    # routing id of the latest hello
         self._outbox: queue.SimpleQueue[Msg] = queue.SimpleQueue()
         self._unsent: list[Msg] = []         # results the server has not received
+        self._progress: Progress | None = None   # the newest progress, waiting for its turn
+        self._progress_sent = float("-inf")      # monotonic time of the last progress sent
         self._job: _Job | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -175,19 +180,23 @@ class Worker:
 
     # -- sending
     def _flush(self):
-        out = []
         while True:
             try:
-                out.append(self._outbox.get_nowait())
+                m = self._outbox.get_nowait()
             except queue.Empty:
                 break
-        for i, m in enumerate(out):
-            if isinstance(m, Progress) and any(isinstance(n, Progress) for n in out[i + 1:]):
-                continue
-            if isinstance(m, RESULTS):
+            if isinstance(m, Progress):
+                self._progress = m
+            elif isinstance(m, RESULTS):
+                if self._progress is not None and self._progress.job_id == m.job_id:
+                    self._progress = None
                 self._send_result(m)
             else:
                 self._send(m)
+        now = time.monotonic()
+        if self._progress is not None and now - self._progress_sent >= PROGRESS_INTERVAL:
+            self._send(self._progress)   # latest-only: dropped if the server is away
+            self._progress, self._progress_sent = None, now
 
     def _send_result(self, msg: Msg):
         """The job ends when the server has its result; until then it is kept."""
