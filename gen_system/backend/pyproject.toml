@@ -33,10 +33,20 @@ dependencies = [
     "adtof-pytorch",
     # Method params and the plan (docs/generators.md).
     "pydantic>=2.14.3",
+    # API server (docs/architecture.md → API server).
+    "fastapi>=0.162.4",
+    "uvicorn[standard]>=0.54.0",
+    "python-multipart>=0.0.33",
 ]
 
+[project.scripts]
+volu = "volu_gen.server.cli:main"
+
 [dependency-groups]
-dev = ["pytest"]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest",
+]
 
 [build-system]
 requires = ["hatchling"]

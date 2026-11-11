@@ -697,8 +697,41 @@ Measure it again on real renders.
 | `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI. Implemented (brightness is still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner) |
-| `server/` | API server (FastAPI, DB, queues, supervision) |
+| `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, and the job queue (HTTP API below). Still to come: job dispatch to the worker, the engine link and supervision, node detection, and the WebSocket |
 | `ipc/` | message models, connection helpers |
+
+## HTTP API
+The server serves the UI API under `/api` (`server/app.py`). FastAPI
+publishes the full schema at `/docs` while the server runs. The default
+address is `127.0.0.1:8770`. These rules apply:
+- **JSON** for everything except two binary endpoints. The UI reads them
+  into a typed array with no parsing:
+  - `GET /display/positions`: `(P, 3)` float32 little-endian, mm, in
+    geometry order, config axes (y down).
+  - `GET /tracks/{id}/peaks/{level}`: int16 little-endian,
+    `(lanes, 3, buckets)` with the middle axis `[min, max, rms]`
+    (decision 0006). `GET /tracks/{id}/peaks` gives the lanes and the
+    bucket count and rate of each level.
+- **Errors:** 404 for an unknown id, 409 when the state does not allow the
+  action (for example, planning before the analysis is finished), and 422
+  for a value that a model rejects. A 422 names the field, so the UI shows it
+  inline.
+- **Planning:** `POST /tracks/{id}/plan` takes the full Studio state
+  (`params` and `pinned`: the start bar, end bar, method and overrides of
+  each edited instance). It stores the params and the plan in the draft row
+  and returns the plan. `GET /tracks/{id}/plan` returns the same state, so
+  the UI can restore its form.
+- **Settings** change with `PATCH /settings` (only the given fields).
+  `PATCH /sync` changes the offsets of the current audio device + mode.
+  `GET /settings/fps-impact?fps=N` gives the counts for the confirmation
+  of a display FPS change.
+- **A job row names its work; the server builds the spec when the job
+  starts.** A render job row holds the version id, the render id, and the
+  output path (picked at queue time). The plan, the fps, and the geometry
+  hash come from the version row and the settings when the job starts. This
+  way a render uses the latest plan and the display FPS in effect at its
+  start (decision 0010). A second render request for a version that has a
+  queued render returns that job.
 
 ## Settled
 These were open questions. They are now part of the design above:

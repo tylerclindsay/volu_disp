@@ -19,6 +19,8 @@ from .audio import BASE_SR, STEM_NAMES, load_audio
 
 TRACKS_DIR = "tracks"  # under the data dir
 SOURCE_STEM = "source"  # the imported audio is `source<ext>`, e.g. source.flac
+# What a folder import picks up (any format ffmpeg decodes would work).
+AUDIO_EXTS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}
 SCHEMA_VERSION = 2
 # Older versions whose model outputs are still valid; only the grid-dependent
 # results (phrases, events, per-bar energy) are dropped and re-derived.
@@ -38,11 +40,14 @@ def default_data_dir() -> Path:
     return Path(__file__).resolve().parents[5] / "data"
 
 
-def import_track(path: Path, data_dir: Path) -> TrackDir:
+def import_track(path: Path, data_dir: Path, original: str | None = None) -> TrackDir:
     """Copy an audio file into its track dir and return the track. The file is
     read once, hashed while copying; importing the same bytes again returns
-    the existing track without writing to it."""
+    the existing track without writing to it. `original` is where the audio
+    came from when `path` is a temporary copy (a browser upload's filename);
+    it gives the track's name and extension."""
     path = Path(path)
+    orig = Path(original) if original is not None else path
     root = Path(data_dir) / TRACKS_DIR
     root.mkdir(parents=True, exist_ok=True)
     tmp = root / f".import-{uuid.uuid4().hex}.tmp"
@@ -56,15 +61,15 @@ def import_track(path: Path, data_dir: Path) -> TrackDir:
         d = root / sha[:16]
         d.mkdir(exist_ok=True)
         if not any(d.glob(SOURCE_STEM + ".*")):
-            os.replace(tmp, d / (SOURCE_STEM + path.suffix.lower()))
+            os.replace(tmp, d / (SOURCE_STEM + orig.suffix.lower()))
     finally:
         tmp.unlink(missing_ok=True)
     t = TrackDir(d)
     src = t.data["source"]
     before = dict(src)
     src["sha256"] = sha
-    src.setdefault("original_path", str(path))
-    src.setdefault("name", path.stem)
+    src.setdefault("original_path", str(orig))
+    src.setdefault("name", orig.stem)
     if src != before or not t.json_path.exists():
         t.save()
     return t

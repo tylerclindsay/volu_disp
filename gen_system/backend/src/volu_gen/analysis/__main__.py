@@ -15,9 +15,7 @@ import sys
 from pathlib import Path
 
 from .pipeline import STAGES, analyze, set_override
-from .track import TRACKS_DIR, TrackDir, default_data_dir, import_track, stored_tracks
-
-AUDIO_EXTS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}
+from .track import AUDIO_EXTS, TRACKS_DIR, TrackDir, default_data_dir, import_track, stored_tracks
 
 
 def find_tracks(inputs: list[str], data_dir: Path) -> list[TrackDir]:

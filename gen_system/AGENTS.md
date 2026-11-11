@@ -24,7 +24,9 @@ Read first:
   README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
   `output/` (implemented), `generators/` (inputs, method interface, plan
   model, director, render job and the first four methods built), then
-  `engine/`, `worker/`, `server/`, `ipc/`, plus `tests/` (see `../docs/architecture.md` → package layout).
+  `server/` (DB, settings, library, planning, versions, presets, queues;
+  no worker or engine link yet), then `engine/`, `worker/`, `ipc/`, plus
+  `tests/` (see `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and
   animation files) goes in `../data/` (`../docs/architecture.md` → storage).
