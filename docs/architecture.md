@@ -9,7 +9,7 @@ section.
 
 Open questions are at the end.
 
-Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
+Related: `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0004-audio-analysis.md`, `decisions/0006-waveform-peaks.md`,
 `decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`,
 `decisions/0009-audio-output-api.md`, `decisions/0010-display-fps.md`,
@@ -791,3 +791,5 @@ These were open questions. They are now part of the design above:
 1. **Generator interface** — the design is in progress in `generators.md`.
    A director plans segments and picks a method for each segment. Then it
    renders the plan. The open questions of the generator are in that file.
+2. **Live/reactive modes** — whether they are in scope. Today every
+   animation is rendered ahead of time from the track data.

@@ -13,7 +13,7 @@ display over Ethernet.
 ## Repo layout
 ```
 AGENTS.md            this file
-docs/                hardware, requirements, architecture, generators, ui, protocol spec, decisions/
+docs/                hardware, architecture, generators, ui, protocol spec, decisions/
 config/displays/     display configs (geometry, nodes, strips, default FPS)
 firmware/drive_node/ drive node firmware (PlatformIO, Arduino, own I2S driver)
 pcb/                 KiCad projects (names: docs/hardware.md → Terminology)

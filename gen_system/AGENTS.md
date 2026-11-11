@@ -7,7 +7,6 @@ while streaming pixel data to the display over Ethernet, in sync.
 Read first:
 - `../AGENTS.md` and `../docs/hardware.md` — terminology, hardware,
   geometry, drive node mapping (whole-system facts).
-- `../docs/requirements.md` — what gen_system must do.
 - `../docs/architecture.md` — processes, IPC, flows, storage.
 - `../docs/generators.md` — the director, plans, and methods.
 - `../docs/ui.md` — the UI.
