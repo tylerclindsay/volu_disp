@@ -94,8 +94,8 @@
 // strips here are GRB.
 #define LED_COLOR_ORDER 1, 0, 2
 
-// Global brightness, 0-255 (255 = unchanged). The host applies brightness
-// and the power cap; keep this at 255 except for bench tests.
+// Global brightness, 0-255 (255 = unchanged). The host applies brightness;
+// keep this at 255 except for bench tests.
 #define GLOBAL_BRIGHTNESS 255
 
 // Blank all strips if no valid packet arrives for this many ms. 0 = never.

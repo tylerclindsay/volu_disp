@@ -31,6 +31,9 @@ Persistent bottom bar on every page:
 - Jobs indicator → drawer with stem separation / analysis / render progress.
 - **Sync** button → popover to fix audio/light alignment while listening
   (below).
+- **Brightness** slider (0–100 %, default 100 %): global, applied live by
+  the engine to the display and the preview (Output). Same value in
+  Settings.
 
 ## Sync
 The A/V sync offset (`architecture.md` → Engine → Clock) is easy to reach
@@ -53,7 +56,12 @@ One audio device and one display, so the engine is in one mode at a time:
   queue.
 
 ## Output
-- The virtual display (3D preview) always shows the frames being played.
+- The virtual display (3D preview) always shows the frames being played,
+  after global brightness, so it looks like the hardware. Preview frames
+  are linear light; the preview encodes them to sRGB
+  (`decisions/0018-render-output.md`).
+- There is no power cap: brightness is the only output limit
+  (`decisions/0020-brightness-no-power-cap.md`).
 - Hardware output is **armed automatically when drive nodes are detected**,
   in both modes. The bottom bar toggle overrides it (e.g. disarm to work
   silently on the hardware).
@@ -64,8 +72,10 @@ One audio device and one display, so the engine is in one mode at a time:
 ## Pages
 
 ### Library
-Table of tracks: title, length, stems status, BPM, animation status
-(none / rendering / ready / stale / FPS mismatch), actions.
+Table of tracks: title, length, stems status (incl. failed), BPM,
+animation status (none / rendering / ready / stale / FPS mismatch /
+failed), actions.
+- No tracks yet: an empty state with **Add files** / **Scan folder**.
 - **Add files** (upload from the browser) / **Scan folder** (type a folder
   path; every audio file under it is imported). Import **copies** each file
   into the track's own data directory; the original is not used afterwards
@@ -74,7 +84,13 @@ Table of tracks: title, length, stems status, BPM, animation status
   automatically (stems → analysis → render with default parameters).
 - BPM column shows `variable` for tracks without a constant grid
   (`decisions/0004-audio-analysis.md`).
-- Row actions: **Play now**, **Add to queue**, open in Studio.
+- Row actions: **Play now**, **Add to queue**, open in Studio, **Remove**.
+- **Remove** (one row, or selected rows in bulk) confirms first, with an
+  **Also delete track data (N MB)** checkbox, unticked by default: keeping
+  the data makes re-adding the same file instant (no stem separation;
+  `architecture.md` → Storage layout). Removing takes the track out of the
+  play queue and cancels its jobs. Disabled for the track that is playing
+  or open in Studio.
 - "Stale" = the active version was rendered against a different geometry
   hash, generator or method version, file format version, or beat grid;
   it still
@@ -110,6 +126,8 @@ Table of tracks: title, length, stems status, BPM, animation status
   ready (`architecture.md`, Main flows).
 - 3D preview: orbit, view presets (front/side/top/iso), slice-isolate
   slider, pixel size and bloom controls.
+- Lanes always show the whole track (no zoom).
+- Empty queue: the preview stays dark, with a pointer to the Library.
 
 ### Studio
 ```
@@ -133,6 +151,15 @@ Table of tracks: title, length, stems status, BPM, animation status
   boundaries, 8-bar phrases with drop / buildup / breakdown tags, and
   drums/bass in/out markers, aligned to the beat grid. They show what the
   generator sees and make a bad grid or phrasing obvious at a glance.
+- **Lane navigation:** a bar-number ruler above the lanes. Ctrl+wheel zooms
+  around the cursor, from the whole track down to about one bar; wheel or
+  Shift+wheel scrolls; click seeks. **Follow playhead** is on by default,
+  turns off when you scroll by hand, and `F` turns it back on. Lanes draw
+  from the coarsest peaks level with at least one bucket per pixel
+  (`decisions/0006-waveform-peaks.md`).
+- No track open: only the track picker. A track still in analysis shows
+  the lanes that exist so far; Render stays disabled until analysis is
+  done.
 - **Parameters** come in two levels (`generators.md` → Studio parameters):
   - **Track params**, constant for the whole track: intensity, change
     rate, palette, enabled methods and weights, strobe max rate, seed.
@@ -159,8 +186,15 @@ Table of tracks: title, length, stems status, BPM, animation status
   (including instance edits); **Set active** picks what the queue plays.
   Selecting a version loads its parameters and plan into the form.
 - **Presets:** named sets of track params per generator, reusable across
-  tracks (instance edits are track-specific and not in presets). Undo
-  covers track and instance param edits.
+  tracks (instance edits are track-specific and not in presets).
+- **Undo / Redo** (Ctrl+Z / Ctrl+Shift+Z) covers track and instance param
+  edits. The history lives in the browser, in memory, per Studio session:
+  it is lost on reload or on switching track (the draft's params and plan
+  are already on the server, so nothing else is lost). Each step holds the
+  full state, track params plus every instance override; undo sends that
+  state back and, since planning is deterministic, gets the same plan.
+  Renders, version selection and grid overrides are not undo steps (the
+  grid override has its own reset).
 - If full renders get too slow on the large display, add a "draft quality"
   option (cheaper method settings, not a lower FPS: a render at another
   rate than the display FPS doesn't play) before reaching for the loop
@@ -189,8 +223,27 @@ Table of tracks: title, length, stems status, BPM, animation status
   Lowering the display FPS below it lowers it too.
 - Audio output device and mode; display and preview offsets (same values as
   the Sync popover).
+- Brightness (same value as the bottom bar).
 - Network interface for the display.
-- Active display config: read-only summary + validation results.
+- Active display config: read-only summary + validation results. It is
+  chosen when the server starts (`volu serve --display <config>`); a
+  different config changes the geometry hash and makes every version
+  stale, so switching takes a restart.
+
+## Errors
+- **Failed jobs:** a red entry in the jobs drawer with the message, an
+  expandable traceback, and **Retry** (queues the same job again). The
+  Library row shows `failed` in its stems or animation status.
+- **Engine errors** (`error` messages): a toast, plus the engine status in
+  the bottom bar.
+- **Server unreachable:** a full-width "Disconnected — reconnecting…"
+  banner; controls are disabled. The WebSocket reconnects with backoff,
+  and every query is refetched on reconnect (the server is the source of
+  truth).
+- **Rejected values** (HTTP 422 from the parameter and settings models):
+  shown inline on the field.
+- **Invalid display config:** a blocking banner linking to the validation
+  results in Settings; hardware output stays disarmed.
 - Storage: disk used by track data; orphaned track directories (no library
   entry) with sizes and a delete action.
 

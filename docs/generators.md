@@ -429,8 +429,9 @@ Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
   file. No gamma curve: the file holds WS2811 PWM values, which are
   linear in light like the methods' output
   (`decisions/0018-render-output.md`).
-- Global brightness and a power cap are applied at playback by the engine
-  (adjustable live, like the sync offset).
+- Global brightness is applied at playback by the engine (adjustable
+  live, like the sync offset). There is no power cap
+  (`decisions/0020-brightness-no-power-cap.md`).
 - The job renders in animation-file chunks (1 s: `fps` frames), in order, and
   checks for cancel between chunks. A chunk that straddles a segment
   boundary asks both methods for their part.

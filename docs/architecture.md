@@ -13,7 +13,7 @@ Related: `requirements.md`, `ui.md`, `generators.md`, `protocol.md`,
 `decisions/0007-ipc-zeromq.md`, `decisions/0008-animation-file-format.md`,
 `decisions/0009-audio-output-api.md`, `decisions/0010-display-fps.md`,
 `decisions/0011-planning-in-server.md`, `decisions/0012-stem-features.md`,
-`decisions/0016-drum-onsets-adtof.md`.
+`decisions/0016-drum-onsets-adtof.md`, `decisions/0020-brightness-no-power-cap.md`.
 
 ---
 
@@ -69,8 +69,9 @@ flowchart LR
 The UI talks only to the API server.
 
 ### API server
-- FastAPI + uvicorn, one asyncio loop. Entry point (`volu serve`); spawns
-  the engine and the worker, and respawns them if they die.
+- FastAPI + uvicorn, one asyncio loop. Entry point
+  (`volu serve --display <config>`); spawns the engine and the worker, and
+  respawns them if they die.
 - **Startup finds running children first.** Before spawning, the server
   sends `hello` to each child's port with a short timeout; `hello`
   replies carry the child's PID.
@@ -91,7 +92,8 @@ The UI talks only to the API server.
   scanned audio into a new track directory, then hands it to the worker.
 - Loads and validates the active display config (no overlaps, full
   coverage, ≤ 64 strips per node, longest strip fits the display FPS) and
-  computes the **geometry hash**. It
+  computes the **geometry hash**. The config is the one given at start;
+  switching configs takes a restart, and the UI shows it read-only. It
   passes the config path and hash to the engine and worker, so all three
   agree on geometry.
 - **Plans renders** (`generators.md` → Plan, `decisions/0011-planning-in-server.md`):
@@ -111,8 +113,11 @@ The UI talks only to the API server.
   exists.
 - **UI API:** HTTP for library, analysis, peaks, settings, versions,
   presets, generator and method parameter schemas, plans (get the plan;
-  change track params or an instance's overrides and get the re-plan back
-  in the response); one WebSocket for live state
+  send the full state, track params plus every instance override, and get
+  the re-plan back in the response; full state rather than a delta, so the
+  UI's undo can resend an earlier state), jobs (failed jobs keep their
+  error and traceback for the UI; retry re-queues the same spec); one
+  WebSocket for live state
   (engine status, job progress, node status, binary preview frames).
   Preview frames are latest-only: a slow browser drops frames, never queues
   them.
@@ -209,9 +214,10 @@ use the same output path as playback.
 
 **Output.** Mapping + packetizer → UDP sender (`protocol.md`, v2). When
 output is disarmed, frames are still produced and previewed but not sent.
-Armed output goes only to nodes in the online set. Global brightness and a
-power cap are applied here, adjustable live like the sync offset
-(`generators.md` → Output and render job).
+Armed output goes only to nodes in the online set. Global brightness is
+applied here, to the sent frames and the preview frames alike, adjustable
+live like the sync offset (`generators.md` → Output and render job). There
+is no power cap (`decisions/0020-brightness-no-power-cap.md`).
 
 **Slots.** `current` and `next` each hold decoded audio + an open animation
 file. `next` is preloaded so a track change is gapless. After a change the
@@ -289,7 +295,7 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`; full rationale in
 | Message | Fields / meaning |
 |---|---|
 | `hello` | sent on connect; the engine replies `hello` |
-| `configure` | display config path, geometry hash, audio device + output mode (shared/exclusive), display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes, brightness + power cap. Full snapshot; sent on connect and on any change |
+| `configure` | display config path, geometry hash, audio device + output mode (shared/exclusive), display FPS, preview FPS, display offset (ms), preview offset (ms), network interface, armed, online nodes, brightness. Full snapshot; sent on connect and on any change |
 | `load` | slot (`current`/`next`), track id, audio path, anim path, start time |
 | `swap_anim` | anim path; replace current animation at the playhead |
 | `play` / `pause` / `stop` / `seek{t}` | transport |
@@ -602,7 +608,7 @@ re-measured on real renders):
 | `mapping/` | pixel → node/strip/index, validation; implemented (decision 0013) |
 | `animfile/` | animation file read/write; implemented (decision 0008) |
 | `generators/` | director, plan, methods (`generators.md`); `Music`, `RenderContext`, the method interface, the plan model, the director, the render job and the first methods (`geometry`, `raindrops`, `strobe`, `galaxy`; decision 0019) implemented, the other methods to come. Imported by the server (planning: director + each method's `choose_params`) and the worker (rendering), so no torch or other heavy imports at module level |
-| `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI; implemented (brightness and power cap still to come) |
+| `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI; implemented (brightness still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner) |
 | `server/` | API server (FastAPI, DB, queues, supervision) |
@@ -675,9 +681,11 @@ Former open questions, now part of the design above:
   - Calibration is stored per (device, mode), since the offset differs.
   - Still to verify with the calibration flash + click once the engine
     exists.
-- **Brightness and power cap are applied by the engine at playback**,
-  not baked into renders, and change live like the sync offset (Engine →
-  Output, `configure`).
+- **Brightness is applied by the engine at playback**, not baked into
+  renders, and changes live like the sync offset (Engine → Output,
+  `configure`). **No power cap:** with no current sensing, a cap would rest
+  on a per-pixel current estimate too rough to trust
+  (`decisions/0020-brightness-no-power-cap.md`).
 - **Removing a track asks whether to also delete its directory**; kept
   directories make re-adding instant, and Settings lists and deletes
   orphaned ones (Storage layout → `data/tracks/<key>/`).

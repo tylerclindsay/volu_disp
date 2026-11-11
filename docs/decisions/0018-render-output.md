@@ -11,7 +11,8 @@ Methods return float32 linear RGB (`../generators.md` → Methods): values
 proportional to emitted light, with palette colors converted from sRGB
 (`RenderContext.colors`). The render job turns them into the uint8 frames of
 the `.anim` (decision 0008), which playback sends to the LEDs unchanged
-apart from global brightness and the power cap (engine).
+apart from global brightness (engine; there is no power cap, decision
+0020).
 
 WS2811 drivers turn each byte into a PWM duty cycle, and an LED's light
 output is close to linear in duty cycle. The firmware applies no curve
