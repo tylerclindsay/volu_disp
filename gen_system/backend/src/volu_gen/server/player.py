@@ -6,7 +6,8 @@ it told the engine to hold in each slot (`slots`), and from that decides
 what to send:
 - **Playback** plays the queue. The playing track (`current`) is out of
   the queue: it leaves the queue when it is loaded into the current slot
-  or when the engine reports `track_started` for it from the next slot.
+  or when the engine reports `track_started` for it from the next slot. A
+  display FPS change puts it back at the front (it needs a re-render).
   `next` is the first queued track whose active version is playable;
   unplayable ones keep their place at the front (Main flows 2).
   `reconcile_next` re-checks this after anything that can change it.
@@ -25,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal
 
+from ..analysis.track import TRACKS_DIR
 from ..ipc import ClearNext, EngineHello, Load, Pause, Play, Seek, Status, Stop, SwapAnim
 
 if TYPE_CHECKING:
@@ -344,8 +346,19 @@ class Player:
         self.reconcile_next()
 
     def fps_changed(self):
-        """Every loaded file is at the old rate (Main flows 6)."""
+        """Every loaded file is at the old rate (Main flows 6). The playback
+        track goes back to the front of the queue: it is re-rendered with
+        the queue, and plays again from its start once it is ready."""
         self._stop()
+        if self.current is not None:
+            q = [t for _, t in self.queue()]
+            with self.s.db:   # new positions, as PUT /queue
+                base = self.s.db.execute("SELECT COALESCE(MAX(pos), -1) + 1 FROM play_queue").fetchone()[0]
+                self.s.db.execute("DELETE FROM play_queue")
+                self.s.db.executemany("INSERT INTO play_queue (pos, track_id) VALUES (?, ?)",
+                                      [(base + i, t) for i, t in enumerate([self.current, *q])])
+            self.current = None
+            self.s.hub.changed("queue")
         self.position = self.studio_position = 0.0
 
     def track_removed(self, track_id: int):
@@ -357,8 +370,15 @@ class Player:
         self.s.state_changed()
 
     def loads(self, track_id: int) -> bool:
-        cur = self.slots.get("current")
-        return cur is not None and cur.track_id == track_id
+        """The engine may have the track's files open: a slot holds it, or
+        it has not yet `released` one of its animations (the track that
+        played before a track change, until the engine closes it)."""
+        if any(e.track_id == track_id for e in self.slots.values()):
+            return True
+        if self.s.engine is None:
+            return False
+        prefix = f"{TRACKS_DIR}/{self.s.library.track(track_id)['key']}/"
+        return any(p.startswith(prefix) for p in self.s.engine.open_anims)
 
     # -- for the UI
     def snapshot(self) -> dict:

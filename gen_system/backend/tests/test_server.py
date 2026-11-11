@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from pathlib import Path
 
 import numpy as np
@@ -69,6 +70,23 @@ def test_db_migrates_once(tmp_path):
     db.close()
     db = dbm.connect(tmp_path / "v.db")   # already current: no step runs again
     assert db.execute("SELECT COUNT(*) FROM tracks").fetchone()[0] == 0
+    db.close()
+
+
+def test_db_migration_2_records_rendered_method_versions(tmp_path):
+    raw = sqlite3.connect(tmp_path / "v.db")
+    raw.executescript(f"BEGIN; {dbm.MIGRATIONS[0]}; PRAGMA user_version = 1; COMMIT;")
+    plan = json.dumps({"segments": [{"method": "geometry", "method_version": 1},
+                                    {"method": "strobe", "method_version": 2}]})
+    with raw:
+        raw.execute("INSERT INTO tracks (key, name, added_at) VALUES ('k', 'n', 'now')")
+        raw.executemany("INSERT INTO versions (track_id, kind, created_at, params, plan, anim_path) "
+                        "VALUES (1, ?, 'now', '{}', ?, ?)",
+                        [("draft", plan, "tracks/k/animations/r.anim"), ("saved", plan, None)])
+    raw.close()
+    db = dbm.connect(tmp_path / "v.db")
+    assert [dbm.loads(r[0]) for r in db.execute("SELECT method_versions FROM versions ORDER BY id")] == \
+        [{"geometry": 1, "strobe": 2}, None]   # from the plan of a rendered row only
     db.close()
 
 
@@ -340,6 +358,20 @@ def test_stale_and_fps_mismatch(client, server):
     r = client.post("/api/tracks/rerender", json={"which": "fps_mismatch"}).json()
     assert len(r["job_ids"]) == 1
     assert client.get("/api/tracks").json()[0]["animation"] == "rendering"
+
+
+def test_method_staleness_follows_the_file(client, server):
+    """The row's plan can be newer than its file (a Studio edit, or the
+    re-plan at the start of a render that then failed): the stale flag
+    comes from the method versions the file was rendered with."""
+    tid = analyzed(server, client)
+    client.post(f"/api/tracks/{tid}/plan", json={})
+    [v] = client.get(f"/api/tracks/{tid}/versions").json()
+    render_done(server, v["id"], 120, method_versions=dbm.dumps({"geometry": METHODS["geometry"].version + 1}))
+    client.post(f"/api/tracks/{tid}/plan", json={})   # the row gets a current plan; the file stays
+    assert client.get(f"/api/tracks/{tid}/versions").json()[0]["stale"] == ["method"]
+    render_done(server, v["id"], 120, method_versions=dbm.dumps({"geometry": METHODS["geometry"].version}))
+    assert client.get(f"/api/tracks/{tid}/versions").json()[0]["stale"] == []
 
 
 def test_fps_change_rerenders_queued_tracks(client, server):

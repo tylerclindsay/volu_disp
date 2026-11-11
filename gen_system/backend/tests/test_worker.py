@@ -17,7 +17,7 @@ from volu_gen.analysis.track import TrackDir, import_track
 from volu_gen.animfile import FORMAT_VERSION, AnimReader
 from volu_gen.animfile import tmp_path as anim_tmp_path
 from volu_gen.generators import (DIRECTOR_VERSION, GENERATOR_ID, DirectorParams, Music, RenderCancelled, StalePlan,
-                                 make_plan)
+                                 Plan, make_plan)
 from volu_gen.ipc import (FROM_WORKER, AnalyzeSpec, Cancel, Cancelled, Done, Failed, Hello, Log, Progress,
                           RegridSpec, RenderSpec, Submit, WorkerHello, connect_dealer, decode, encode)
 from volu_gen.worker import JobEnv, JobError, Worker, run_analyze, run_regrid, run_render
@@ -68,6 +68,8 @@ def test_render(data, key):
         assert rd.meta["render_id"] == "r1" and rd.meta["fps"] == FPS
     assert (r.fps, r.pixel_count, r.geometry_hash) == (FPS, GEO.pixel_count, GEO.hash)
     assert (r.format_version, r.generator, r.generator_version) == (FORMAT_VERSION, GENERATOR_ID, DIRECTOR_VERSION)
+    plan = Plan.model_validate(render_spec(key).plan)
+    assert r.method_versions == {s.method: s.method_version for s in plan.segments}
     assert r.grid_override is None
     assert seen[0][2] == 0.0 and seen[-1][2] == 1.0 and seen[-1][3] == 0.0
     assert not anim_tmp_path(path).exists()

@@ -33,7 +33,9 @@ both uneven, since rates no longer divide into each other.
 - **Changing the display FPS** (`../architecture.md` → Main flows 6):
   - Settings shows how many versions the change makes unplayable and asks
     for confirmation. Playback stops, since the loaded track can't play
-    at the new rate.
+    at the new rate. *Amended 2026-11-11:* the track that was playing
+    goes back to the front of the play queue, so it is re-rendered with
+    the queue below instead of dropping out.
   - The server queues an **FPS re-render** of the active version of
     every track in the play queue, so the queue becomes playable again
     without further action. Other tracks are re-rendered manually (a

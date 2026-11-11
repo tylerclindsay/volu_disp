@@ -92,12 +92,13 @@ def queue_render(db: sqlite3.Connection, version_id: int, reason: str, priority:
 
 
 def promote_track(db: sqlite3.Connection, track_id: int):
-    """A track joined the play queue: its queued import work (analyze and
-    render) moves up to the play-queue priority."""
+    """A track joined the play queue: its open import work (analyze and
+    render) moves up to the play-queue priority. A running analyze moves up
+    too: its default render gets the analyze's priority when it finishes."""
     with db:
-        db.execute("UPDATE jobs SET priority = ? WHERE track_id = ? AND state = ? AND priority > ? "
+        db.execute("UPDATE jobs SET priority = ? WHERE track_id = ? AND state IN (?, ?) AND priority > ? "
                    "AND kind IN ('analyze', 'render')",
-                   (int(Priority.QUEUED), track_id, QUEUED, int(Priority.QUEUED)))
+                   (int(Priority.QUEUED), track_id, *OPEN, int(Priority.QUEUED)))
 
 
 def next_job(db: sqlite3.Connection) -> sqlite3.Row | None:

@@ -46,7 +46,7 @@ FROM_WORKER_MSGS = [
     Done(job_id=3, result=RegridResult(**{**SUMMARY, "grid_override": {"bpm": 128.0, "offset": 0.25}})),
     Done(job_id=5, result=RenderResult(render_id="r1", anim_path=RENDER.anim_path, frame_count=10, fps=97,
                                        pixel_count=4, geometry_hash="h", format_version=1, generator="director",
-                                       generator_version=1, grid_override=None)),
+                                       generator_version=1, method_versions={"geometry": 1}, grid_override=None)),
     Failed(job_id=6, error="ValueError: x", traceback="Traceback ..."), Cancelled(job_id=5), Log(line="[stems] 1"),
 ]
 

@@ -29,6 +29,7 @@ from volu_gen.ipc import (TO_ENGINE, AnalyzeResult, ClearNext, Configure, Engine
 from volu_gen.server import Display, Runtime, Server, cleanup, create_app
 from volu_gen.server import db as dbm
 from volu_gen.server.children import Child, kill_pid, probe_hello
+from volu_gen.server.jobs import Priority
 from volu_gen.server.nodes import NodeWatch, ping
 from volu_gen.worker import Worker, run_regrid, run_render
 
@@ -268,8 +269,12 @@ def rendered(rig, name: str, data: bytes) -> tuple[int, int]:
     tid = analyzed(rig.server, rig.client, name, data)
     rig.client.post(f"/api/tracks/{tid}/plan", json={})
     [v] = rig.client.get(f"/api/tracks/{tid}/versions").json()
-    render_done(rig.server, v["id"], FPS, render_id=f"r{tid}", anim_path=f"tracks/{name[0] * 16}/animations/r.anim")
+    render_done(rig.server, v["id"], FPS, render_id=f"r{tid}", anim_path=anim(rig, tid, f"r{tid}"))
     return tid, v["id"]
+
+
+def anim(rig, track_id: int, render_id: str) -> str:
+    return f"tracks/{rig.client.get(f'/api/tracks/{track_id}').json()['key']}/animations/{render_id}.anim"
 
 
 # -- job dispatch (Main flows 1, 3, 4, 6)
@@ -297,8 +302,8 @@ def test_regrid_replans_and_rerender_clears_stale(rig):
     rig.wait_job(job)
     t = rig.client.get(f"/api/tracks/{tid}").json()
     assert t["grid_override"] == {"bpm": 128.0, "offset": 0.1} and t["animation"] == "stale"
-    after = rig.client.get(f"/api/tracks/{tid}/plan").json()["plan"]
-    assert after != before   # re-planned on the new grid
+    # re-planned on the new grid (just after the job shows done: the re-plan runs off the event loop)
+    wait_until(lambda: rig.client.get(f"/api/tracks/{tid}/plan").json()["plan"] != before, what="the re-plan")
     rig.wait_job(rig.client.post(f"/api/tracks/{tid}/render").json()["job_id"])
     assert rig.client.get(f"/api/tracks/{tid}").json()["animation"] == "ready"
 
@@ -352,6 +357,20 @@ def test_cancel_running_render_and_fps_change(rig):
     gate.go.set()
     assert rig.wait_job(again["id"])["result"]["fps"] == 60
     assert rig.client.get(f"/api/tracks/{tid}").json()["animation"] == "ready"
+
+
+def test_queueing_a_track_during_its_analysis_raises_its_default_render(rig):
+    rig.start_server()
+    gate = Gate(fake_analyze)
+    rig.start_worker({"analyze": gate})
+    tid = upload(rig.client, "a.flac", b"a")["track"]["id"]
+    wait_until(gate.waiting.is_set, what="the analysis")
+    rig.client.post("/api/queue", json={"track_id": tid})
+    gate.go.set()
+    render = wait_until(lambda: next((j for j in rig.client.get("/api/jobs").json() if j["kind"] == "render"),
+                                     None), what="the default render")
+    assert (render["spec"]["reason"], render["priority"]) == ("default", Priority.QUEUED)
+    rig.wait_job(render["id"])
 
 
 def test_cancel_analysis_needs_a_managed_worker(rig):
@@ -496,6 +515,48 @@ def test_studio_mode(rig):
     assert (sent[2].slot, sent[2].track_id) == ("next", b)
     r = rig.client.delete(f"/api/tracks/{a}")
     assert r.status_code == 409   # loaded in the engine
+
+
+def test_no_removal_while_the_engine_has_the_track_open(rig):
+    rig.start_server()
+    a, _ = rendered(rig, "a.flac", b"a")
+    b, _ = rendered(rig, "b.flac", b"b")
+    eng = rig.start_engine()
+    rig.client.put("/api/queue", json={"track_ids": [a, b]})
+    rig.client.post("/api/player/play")
+    old = eng.wait_for(lambda m: isinstance(m, Load) and m.slot == "current").anim_path
+    eng.wait_for(lambda m: isinstance(m, Load) and m.slot == "next")
+    for t in (a, b):   # playing, next
+        r = rig.client.delete(f"/api/tracks/{t}", params={"delete_data": True})
+        assert r.status_code == 409 and "loaded" in r.text
+    eng.send(TrackEnded(track_id=a))
+    eng.send(TrackStarted(track_id=b))
+    wait_until(lambda: rig.state()["player"]["current_track_id"] == b, what="track b to start")
+    assert rig.client.delete(f"/api/tracks/{a}", params={"delete_data": True}).status_code == 409   # not released
+    key = rig.client.get(f"/api/tracks/{a}").json()["key"]
+    eng.send(Released(anim_path=old))
+    wait_until(lambda: rig.client.delete(f"/api/tracks/{a}", params={"delete_data": True}).status_code == 204,
+               what="the removal after the release")
+    assert not (rig.data / "tracks" / key).exists()
+
+
+def test_fps_change_puts_the_playing_track_back_in_the_queue(rig):
+    rig.start_server()
+    a, va = rendered(rig, "a.flac", b"a")
+    b, vb = rendered(rig, "b.flac", b"b")
+    eng = rig.start_engine()
+    rig.client.put("/api/queue", json={"track_ids": [a, b]})
+    assert rig.client.post("/api/player/play").json()["current_track_id"] == a
+    assert rig.client.get("/api/settings/fps-impact", params={"fps": 60}).json()["queue_rerenders"] == 2
+    rig.client.patch("/api/settings", json={"display_fps": 60})
+    eng.wait_for(lambda m: isinstance(m, Stop))
+    assert rig.state()["player"]["current_track_id"] is None
+    assert [q["track_id"] for q in rig.client.get("/api/queue").json()] == [a, b]
+    renders = sorted((j for j in rig.client.get("/api/jobs").json() if j["kind"] == "render"), key=lambda j: j["id"])
+    assert [(j["version_id"], j["priority"], j["spec"]["reason"]) for j in renders] == \
+        [(va, Priority.QUEUED, "fps"), (vb, Priority.QUEUED, "fps")]
+    render_done(rig.server, va, 60, render_id="ra60", anim_path=anim(rig, a, "ra60"))
+    assert rig.client.post("/api/player/play").json()["current_track_id"] == a   # plays again once re-rendered
 
 
 def test_engine_restart_gets_the_track_back_paused(rig):

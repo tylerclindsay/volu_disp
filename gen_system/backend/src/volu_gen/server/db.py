@@ -83,6 +83,16 @@ MIGRATIONS = [
     );
     CREATE INDEX jobs_state ON jobs(state, priority, id);
     """,
+    # 2: the method versions a file was rendered with. The row's plan can
+    # change before its file does (a Studio edit, the re-plan at the start
+    # of a render that then fails), so method staleness can't come from it.
+    """
+    ALTER TABLE versions ADD COLUMN method_versions TEXT;   -- JSON: method id → version
+    UPDATE versions SET method_versions = (
+        SELECT json_group_object(json_extract(value, '$.method'), json_extract(value, '$.method_version'))
+        FROM json_each(versions.plan, '$.segments'))
+    WHERE anim_path IS NOT NULL AND plan IS NOT NULL;
+    """,
 ]
 
 

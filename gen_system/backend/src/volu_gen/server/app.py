@@ -95,9 +95,10 @@ async def get_settings(request: Request) -> settings_mod.Settings:
 @router.patch("/settings")
 async def patch_settings(request: Request, changes: dict[str, Any] = Body()) -> settings_mod.Settings:
     """Change some settings; the engine gets them live. A new display FPS
-    stops playback, cancels a running render and queues it again, and
-    queues an FPS re-render of the active version of every track in the
-    play queue (Main flows 6)."""
+    stops playback, puts the playing track back at the front of the play
+    queue, cancels a running render and queues it again, and queues an FPS
+    re-render of the active version of every track in the play queue (Main
+    flows 6)."""
     s = srv(request)
     try:
         new = settings_mod.patch(s.settings, changes, s.display)
@@ -130,12 +131,15 @@ async def _restart_running_render(s: Server):
 
 
 def _queue_mismatches(s: Server, fps: int) -> list:
-    """Active versions of queued tracks that are rendered at another rate
+    """Active versions of queued tracks, and of the playing track (an FPS
+    change puts it back in the queue), that are rendered at another rate
     (with the track's duration)."""
     return s.db.execute(
-        "SELECT DISTINCT v.*, t.duration AS track_duration FROM play_queue q JOIN tracks t ON t.id = q.track_id "
-        "JOIN versions v ON v.id = t.active_version_id "
-        "WHERE v.anim_path IS NOT NULL AND v.fps != ?", (fps,)).fetchall()
+        "SELECT v.*, t.duration AS track_duration FROM tracks t JOIN versions v ON v.id = t.active_version_id "
+        "WHERE (t.id IN (SELECT track_id FROM play_queue) OR t.id = ?) "
+        "AND v.anim_path IS NOT NULL AND v.fps != ? "
+        "ORDER BY (SELECT MIN(pos) FROM play_queue q WHERE q.track_id = t.id)",   # NULL (playing) first
+        (s.player.current, fps)).fetchall()
 
 
 @router.get("/settings/fps-impact")
@@ -255,11 +259,13 @@ async def get_track(request: Request, track_id: int) -> dict:
 async def remove_track(request: Request, track_id: int, delete_data: bool = False):
     """Remove a track from the library: its versions, queue entries and
     jobs go too (a running job is cancelled). Its directory stays unless
-    `delete_data`. Not while the engine plays it (or Studio has it loaded)."""
+    `delete_data`. Not while the engine has it loaded (playing, next, in
+    Studio) or has not yet released one of its files."""
     s = srv(request)
     track_or_404(s, track_id)
     if s.player.loads(track_id):
-        raise HTTPException(409, "the track is loaded in the engine; stop it or open another first")
+        raise HTTPException(409, "the engine has the track loaded (playing or next) or has not closed its files "
+                                 "yet; stop it or take it out of the queue, then try again")
     run = s.worker.running if s.worker is not None else None
     if run is not None and run.track_id == track_id and not await s.worker.cancel_running(run.job_id) \
             and run.kind != "render":

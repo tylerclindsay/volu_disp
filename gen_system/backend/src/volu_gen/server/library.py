@@ -127,10 +127,11 @@ class Library:
         with self.db:
             self.db.execute(
                 "UPDATE versions SET render_id = ?, anim_path = ?, fps = ?, pixel_count = ?, geometry_hash = ?, "
-                "format_version = ?, generator_version = ?, grid_override = ?, rendered_at = ? WHERE id = ?",
+                "format_version = ?, generator_version = ?, method_versions = ?, grid_override = ?, rendered_at = ? "
+                "WHERE id = ?",
                 (result["render_id"], result["anim_path"], result["fps"], result["pixel_count"],
                  result["geometry_hash"], result["format_version"], result["generator_version"],
-                 dbm.dumps(result["grid_override"]), dbm.now(), version_id))
+                 dbm.dumps(result["method_versions"]), dbm.dumps(result["grid_override"]), dbm.now(), version_id))
 
     def anim_paths(self) -> set[str]:
         """Every animation file a version row references."""
@@ -166,9 +167,9 @@ class Library:
             reasons.append("geometry")
         if v["generator_version"] != DIRECTOR_VERSION:
             reasons.append("generator")
-        plan = dbm.loads(v["plan"]) or {}
-        if any(s["method"] not in METHODS or METHODS[s["method"]].version != s["method_version"]
-               for s in plan.get("segments", [])):
+        # the file's method versions, not the row's plan: that can be newer than the file
+        if any(m not in METHODS or METHODS[m].version != ver
+               for m, ver in (dbm.loads(v["method_versions"]) or {}).items()):
             reasons.append("method")
         if v["format_version"] != FORMAT_VERSION:
             reasons.append("format")

@@ -126,6 +126,7 @@ def run_render(spec: RenderSpec, env: JobEnv) -> RenderResult:
                         fps=meta["fps"], pixel_count=meta["pixel_count"], geometry_hash=meta["geometry_hash"],
                         format_version=FORMAT_VERSION, generator=meta["generator"]["id"],
                         generator_version=meta["generator"]["version"],
+                        method_versions={s.method: s.method_version for s in plan.segments},
                         grid_override=meta["analysis"]["tempo_override"])
 
 

@@ -90,7 +90,9 @@ failed), actions.
   the data makes re-adding the same file instant (no stem separation;
   `architecture.md` → Storage layout). Removing takes the track out of the
   play queue and cancels its jobs. Disabled for the track that is playing
-  or open in Studio.
+  or loaded as next, or open in Studio. The server also refuses (409) for
+  the track that played before a track change, until the engine has
+  closed its files.
 - "Stale" = the active version was rendered against a different geometry
   hash, generator or method version, file format version, or beat grid;
   it still
@@ -99,8 +101,9 @@ failed), actions.
 - "FPS mismatch" = the active version was rendered at another rate than
   the display FPS; it **doesn't play** until re-rendered. After a display
   FPS change, tracks in the play queue are re-rendered automatically
-  (Settings); the row shows that progress. Others are re-rendered by hand:
-  a row action, or **Re-render FPS mismatch** for all of them (like import
+  (Settings); the track that was playing goes back to the front of the
+  queue and is re-rendered with it. The row shows that progress. Others
+  are re-rendered by hand: a row action, or **Re-render FPS mismatch** for all of them (like import
   work). Either re-renders the active version in place with its params
   and plan (`architecture.md` → Main flows 6).
 

@@ -298,7 +298,7 @@ without one. Transport commands then fail with 409.
 |---|---|---|
 | `analyze` | key, stages (default all), force set | key, duration, BPM/grid summary, time and peak VRAM of each stage that ran. The first stage that fails fails the job |
 | `regrid` | key, BPM + downbeat time (both empty: clear the override) | key, duration, BPM/grid summary. The new phrases, events and bars are in `analysis.json` (CPU, seconds) |
-| `render` | key, render id, output path, generator id, plan (made by the server, `generators.md`; it carries the track params), fps (the display FPS when the job starts), geometry hash | the version row's columns: render id, anim path, frame count, fps, pixel count, geometry hash, format version, generator id + version, the tempo override the render used |
+| `render` | key, render id, output path, generator id, plan (made by the server, `generators.md`; it carries the track params), fps (the display FPS when the job starts), geometry hash | the version row's columns: render id, anim path, frame count, fps, pixel count, geometry hash, format version, generator id + version, the method versions of the plan, the tempo override the render used |
 
 The worker refuses a render for another geometry hash than that of its own
 display config, an output path other than
@@ -329,8 +329,9 @@ priority, the other jobs run in the order they were queued
 (`server/jobs.py` → `next_job`). The user
 can queue a track whose import is not finished. Then the remaining import
 work of that track (`analyze` and its default render) moves up to "render
-for a queued track". The worker never preempts a job in the middle of a run. A job
-with higher priority starts when the current job finishes. This takes at
+for a queued track". This also holds while its `analyze` runs: the default
+render that follows gets the higher priority. The worker never preempts a
+job in the middle of a run. A job with higher priority starts when the current job finishes. This takes at
 most one track analysis or one render (minutes per track on the large
 display, decision 0010).
 
@@ -487,15 +488,17 @@ by `cancel`; it wrote no file), and `log{line}`.
 6. **Display FPS change** (Settings, `decisions/0010-display-fps.md`).
    1. The UI asks for confirmation first. It shows how many versions become
       unplayable.
-   2. The server sends `stop`, stores the rate, and sends `configure`.
+   2. The server sends `stop`, stores the rate, and sends `configure`. The
+      track that was playing goes back to the front of the play queue, so
+      it is re-rendered with the queue and plays again when it is ready.
    3. The engine wakes at the new rate. Test patterns and calibration keep
       working. No animation is loaded.
 
    Every version with a different fps is now unplayable. The server cancels
    a running render and queues it again. It also queues an **FPS re-render**
-   of the active version of every track in the play queue, at "render for a
-   queued track" priority. The user re-renders other tracks by hand with one
-   of these controls:
+   of the active version of every track in the play queue (with the track
+   that was playing), at "render for a queued track" priority. The user
+   re-renders other tracks by hand with one of these controls:
    - a Library row action
    - the Library bulk action "Re-render FPS mismatch"
    - a button on the active version in the version bar of Studio
@@ -742,7 +745,10 @@ Measure it again on real renders.
   current one:
   - its geometry hash
   - its generator version
-  - any method version in its plan
+  - any method version of the plan it was rendered with. The server keeps
+    these with the file (the render result), not from the plan in the
+    version row: that plan can be newer than the file (a Studio edit, or
+    the re-plan before a render that then failed or was cancelled)
   - its format version
   - the tempo override in effect
 
@@ -824,7 +830,11 @@ address is `127.0.0.1:8770`. These rules apply:
   cannot do this, so it returns 409. A display FPS change cancels a running
   render and queues it again.
 - **Track removal** (`DELETE /tracks/{id}`) cancels the running job of the
-  track. It returns 409 while the engine has the track loaded.
+  track. It returns 409 while the engine has the track loaded (in the
+  current or the next slot), and while the engine has not yet sent
+  `released` for one of its animation files (the track that played before
+  a track change). Otherwise "delete data" could fail on a file the engine
+  has open and leave a half-deleted directory.
 - **Live state and transport** (Main flows 2, 5, 7):
 
   | Route | Does |

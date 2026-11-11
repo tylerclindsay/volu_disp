@@ -291,6 +291,7 @@ class RenderResult(Msg):
     format_version: int
     generator: str
     generator_version: int
+    method_versions: dict[str, int]          # method id → version, of every method in the plan
     grid_override: dict[str, float] | None   # the tempo override the render used
 
 
