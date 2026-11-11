@@ -16,13 +16,16 @@ GPIOs (WT32-ETH01):
 
 | Signal | GPIO | Signal | GPIO |
 |---|---|---|---|
-| E1_Q1SER | 17 | E2_Q1SER | 33 |
+| E1_Q1SER | 5 | E2_Q1SER | 33 |
 | E1_Q2SER | 12 | E2_Q2SER | 32 |
 | E1_Q3SER | 14 | E2_Q3SER | 3 (U0RXD) |
 | E1_Q4SER | 15 | E2_Q4SER | 1 (U0TXD) |
 | SRCLK | 4 | RCLK | 2 |
-| E1_5V_PRESENT | 39 (in) | E2_5V_PRESENT | 36 (in) |
-| E1_PWR_GOOD | 5 (in) | E2_PWR_GOOD | 35 (in) |
+| E1_5V_PRESENT | 39 (input-only) | E2_5V_PRESENT | 36 (input-only) |
+| E1_PWR_GOOD | 17 | E2_PWR_GOOD | 35 (input-only) |
+
+Corrected 2026-11-11: E1_Q1SER and E1_PWR_GOOD were listed swapped (as
+IO17 and IO5); the drive node PCB wires E1_Q1SER to IO5.
 
 ## Decision
 

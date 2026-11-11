@@ -57,7 +57,7 @@
 // ---------------------------------------------------------------------------
 // Serial data line of each shift register: E<edge>_Q<register>SER.
 // Register n of an edge node drives connectors J(8n-7)..J(8n) (outputs A..H).
-#define PIN_E1_Q1SER 17
+#define PIN_E1_Q1SER 5    // strapping pin (SDIO timing only)
 #define PIN_E1_Q2SER 12
 #define PIN_E1_Q3SER 14
 #define PIN_E1_Q4SER 15
@@ -68,10 +68,11 @@
 #define PIN_SRCLK    4    // shift clock, shared by all 8 registers
 #define PIN_RCLK     2    // latch clock, shared (strapping pin)
 
-// Edge node power status inputs (pulled up on the drive node).
+// Edge node power status inputs (pulled up on the drive node). 39, 36 and
+// 35 are input-only pins; 17 is a normal GPIO.
 #define PIN_E1_5V_PRESENT 39   // low = the edge node's 5V (595 supply) is up
 #define PIN_E2_5V_PRESENT 36
-#define PIN_E1_PWR_GOOD   5    // low = the edge node's 12V hot-swap is good
+#define PIN_E1_PWR_GOOD   17   // low = the edge node's 12V hot-swap is good
 #define PIN_E2_PWR_GOOD   35   //   (reads high, not good, when unplugged)
 
 // Only drive the data lines of edge nodes whose 5V is present (keeps logic

@@ -72,7 +72,7 @@ feeds one 595, which fans out to 8 strips (outputs A–H = `s % 8`):
 
 | GPIO | Net         | Edge node | Strips (node-local) | Connectors |
 |------|-------------|-----------|---------------------|------------|
-| IO17 | E1_Q1SER    | E1        | 0–7                 | J1–J8      |
+| IO5  | E1_Q1SER    | E1        | 0–7                 | J1–J8      |
 | IO12 | E1_Q2SER    | E1        | 8–15                | J9–J16     |
 | IO14 | E1_Q3SER    | E1        | 16–23               | J17–J24    |
 | IO15 | E1_Q4SER    | E1        | 24–31               | J25–J32    |
@@ -80,19 +80,20 @@ feeds one 595, which fans out to 8 strips (outputs A–H = `s % 8`):
 | IO32 | E2_Q2SER    | E2        | 40–47               | J9–J16     |
 | IO3  | E2_Q3SER    | E2        | 48–55               | J17–J24    |
 | IO1  | E2_Q4SER    | E2        | 56–63               | J25–J32    |
-| IO4  | SRCLK       | both      | shift clock, shared by all 8 595s (20 MHz) | |
+| IO4  | SRCLK       | both      | shift clock, shared (20 MHz) | |
 | IO2  | RCLK        | both      | latch clock, shared  | |
 
 The serial data lines of an edge node without 5V are held low.
 
 **Edge node power status inputs** (active low; pulled up on the drive node
-PCB):
+PCB). IO39, IO36 and IO35 are input-only pins; IO17 is a normal GPIO used
+as an input:
 
 | GPIO | Signal         | Low means                         | Unplugged reads |
 |------|----------------|-----------------------------------|-----------------|
 | IO39 | E1_5V_PRESENT  | E1's 5V (595 supply) is up        | high (off)      |
 | IO36 | E2_5V_PRESENT  | E2's 5V is up                     | high (off)      |
-| IO5  | E1_PWR_GOOD    | E1's 12V hot-swap is good         | high (not good) |
+| IO17 | E1_PWR_GOOD    | E1's 12V hot-swap is good         | high (not good) |
 | IO35 | E2_PWR_GOOD    | E2's 12V hot-swap is good         | high (not good) |
 
 `5V_PRESENT` gates output (`EDGE_POWER_CHECK`); `PWR_GOOD` is only
@@ -114,7 +115,9 @@ pins (IO19, 21, 22, 25, 26, 27).
 - **Strapping pins in use:** IO12 (MTDI: must be low at reset, or the
   flash runs at 1.8 V and the module won't boot), IO2 (must be low or
   floating to enter download mode), IO15 (low at reset silences the ROM
-  boot log), IO5 (SDIO timing; pulled up here, which is the default).
+  boot log), IO5 (E1 Q1 data; its strap only sets SDIO slave timing,
+  which the drive node doesn't use, and drives a 74HCT245 input, which
+  doesn't load it, so the internal pull-up keeps the default).
   Nothing on the drive node may pull IO12 high during reset.
 - The 595s' outputs are random at power-up, so the firmware starts the LED
   output (and blanks) before bringing up Ethernet.
