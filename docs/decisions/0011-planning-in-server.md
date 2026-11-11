@@ -2,8 +2,10 @@
 
 Date: 2026-11-09. Status: accepted; implemented
 (`gen_system/backend/src/volu_gen/server/planning.py`, `POST
-/tracks/{id}/plan`). The re-plan before a render comes with the server's
-job dispatch. Design in
+/tracks/{id}/plan`). The re-plan before a render is implemented in the
+job dispatch of the server (`server/dispatch.py` → `build_spec`): a
+render with no plan or a stale plan is planned again, and the segment
+times come from the current grid. Design in
 `../generators.md` → Plan and `../architecture.md` → API server.
 
 ## Context

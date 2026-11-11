@@ -3,8 +3,9 @@
 Date: 2026-11-09, revised the same day. Status: accepted; partly
 implemented: the setting and its checks, FPS re-render jobs and the
 confirmation counts (`gen_system/backend/src/volu_gen/server/`), and
-renders at the display FPS (`worker/`). The engine side and the cancel
-of a running render are still to come. Design in `../architecture.md` →
+renders at the display FPS (`worker/`), and on a change the stop of
+playback and the cancel and new queue of a running render (`server/`).
+The engine side is still to come. Design in `../architecture.md` →
 Engine (Clock), Main flows 6, Storage layout → `animations/` (Lifecycle),
 Settled.
 

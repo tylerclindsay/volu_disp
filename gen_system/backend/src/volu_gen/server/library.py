@@ -29,6 +29,12 @@ class Library:
     def track_dir(self, key: str) -> TrackDir:
         return TrackDir(self.tracks_dir / key)
 
+    def audio_path(self, key: str) -> str | None:
+        """The track's source audio, relative to the data dir (without
+        reading its analysis.json)."""
+        found = sorted((self.tracks_dir / key).glob(SOURCE_STEM + ".*"))
+        return found[0].relative_to(self.data_dir).as_posix() if found else None
+
     # -- import
     def import_file(self, path: Path, original: str | None = None) -> TrackDir:
         """Copy one audio file in (blocking: run off the event loop)."""
@@ -100,6 +106,35 @@ class Library:
             self.db.execute("UPDATE tracks SET active_version_id = ? WHERE id = ? AND active_version_id IS NULL",
                             (vid, track_id))
         return vid
+
+    def ensure_draft(self, track_id: int, params: DirectorParams) -> int:
+        """The track's draft row; a new one has `params` and no plan yet
+        (it is planned when its render starts)."""
+        d = self.draft(track_id)
+        if d is not None:
+            return d["id"]
+        with self.db:
+            vid = self.db.execute(
+                "INSERT INTO versions (track_id, kind, created_at, params) VALUES (?, 'draft', ?, ?)",
+                (track_id, dbm.now(), dbm.dumps(params.model_dump(mode="json")))).lastrowid
+            self.db.execute("UPDATE tracks SET active_version_id = ? WHERE id = ? AND active_version_id IS NULL",
+                            (vid, track_id))
+        return vid
+
+    def apply_render(self, version_id: int, result: dict):
+        """A finished render: the version gets the new file (the old one is
+        deleted by cleanup once nothing uses it)."""
+        with self.db:
+            self.db.execute(
+                "UPDATE versions SET render_id = ?, anim_path = ?, fps = ?, pixel_count = ?, geometry_hash = ?, "
+                "format_version = ?, generator_version = ?, grid_override = ?, rendered_at = ? WHERE id = ?",
+                (result["render_id"], result["anim_path"], result["fps"], result["pixel_count"],
+                 result["geometry_hash"], result["format_version"], result["generator_version"],
+                 dbm.dumps(result["grid_override"]), dbm.now(), version_id))
+
+    def anim_paths(self) -> set[str]:
+        """Every animation file a version row references."""
+        return {r[0] for r in self.db.execute("SELECT anim_path FROM versions WHERE anim_path IS NOT NULL")}
 
     def save_draft(self, track_id: int, name: str | None) -> int:
         """Save the rendered draft as a version: same params, plan and file

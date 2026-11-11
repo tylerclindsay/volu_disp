@@ -22,11 +22,13 @@ job (`render_anim`: plan → blended, quantized frames → `.anim`;
 **`server/`** — the API server for the UI (`../../docs/architecture.md` →
 API server, HTTP API): SQLite DB, settings, track import and removal,
 analysis and peaks, planning, versions, presets, the play queue and the
-job queue. **`ipc/`** — the messages between the server, engine and
-worker, and their ZeroMQ sockets (`../../docs/decisions/0007-ipc-zeromq.md`).
-**`worker/`** — the worker process: `analyze`, `regrid` and `render`
-jobs, one at a time. Still to come: the other methods, the engine, the
-server's link to the worker and engine, and the WebSocket.
+job queue; job dispatch to the worker, the engine link, the player
+(Playback and Studio), supervision of the engine and the worker, file
+cleanup, node detection and the WebSocket. **`ipc/`** — the messages
+between the server, engine and worker, and their ZeroMQ sockets
+(`../../docs/decisions/0007-ipc-zeromq.md`). **`worker/`** — the worker
+process: `analyze`, `regrid` and `render` jobs, one at a time. Still to
+come: the other methods and the engine.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
 ```
@@ -66,18 +68,34 @@ uv run python -m volu_gen.analysis --all          # every stored track
 ```
 uv run volu serve --display ../../config/displays/prototype.yaml
 ```
-Serves the UI API on `http://127.0.0.1:8770/api` (schema at `/docs`). It
-keeps its state in `../../data/volu.db` (`--data` for another data dir).
-Imports queue `analyze` jobs, but nothing runs them until the server's
-link to the worker exists, so a track added through the server stays
-`pending` and can't be planned yet. Tracks the CLI analyzed show as orphaned directories until
+Serves the UI API on `http://127.0.0.1:8770/api` (schema at `/docs`,
+live state on the WebSocket `/api/ws`). It keeps its state in
+`../../data/volu.db` (`--data` for another data dir). It starts the
+worker and runs the job queue on it: an imported track is analyzed, then
+gets its default render. It starts the engine too, once
+`volu_gen.engine` exists; until then it logs that the engine is not
+built, and the transport routes return 409. Ctrl+C stops the server and
+its children. Tracks the CLI analyzed show as orphaned directories until
 they are added through the server.
+- `--connect-only`: start no engine or worker; connect to ones started
+  by hand on the same ports (for example a worker in a debugger). The
+  server then can't cancel a running analysis and deletes no leftover
+  `*.tmp` files.
+- `--no-ping`: no node detection (all drive nodes stay offline, so
+  output stays disarmed unless `PUT /api/output/armed`).
+- `--host`, `--port` (HTTP, default `127.0.0.1:8770`); `--engine-port`,
+  `--preview-port`, `--worker-port` (IPC, default 8771–8773, always on
+  localhost).
+
+The server runs uvicorn on `asyncio.SelectorEventLoop`: `zmq.asyncio`
+does not work on the Windows default (Proactor) loop
+(`../../docs/decisions/0007-ipc-zeromq.md` → Amendment 2).
 
 ## Worker
 ```
 uv run python -m volu_gen.worker --display ../../config/displays/prototype.yaml
 ```
-The server will start it; until then it can run alone. It binds
+The server starts it (`volu serve`). It can also run alone. It binds
 `tcp://127.0.0.1:8773` and takes jobs from a DEALER on that port
 (`volu_gen.ipc`). It exits 3 s after the last server disconnects
 (`--server-timeout 0`: never). Analysis jobs use CUDA when available
@@ -101,4 +119,6 @@ uv run pytest
 ```
 Unit tests cover the pure-numpy parts (grid fit, windowed sections,
 phrases, mood normalization, waveform peaks, stem features, geometry, mapping, protocol test vectors, packetizer, loopback UDP) with synthetic inputs; no GPU or audio needed.
-The IPC and worker tests use real ZeroMQ sockets on free localhost ports.
+The IPC, worker and server link tests (`test_server_links.py`: a real
+worker with a fake analysis, a fake engine, the WebSocket) use real
+ZeroMQ sockets on free localhost ports.

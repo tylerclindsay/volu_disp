@@ -24,9 +24,10 @@ Read first:
   README): `analysis/`, `animfile/`, `geometry/`, `mapping/` and
   `output/` (implemented), `generators/` (inputs, method interface, plan
   model, director, render job and the first four methods built), then
-  `server/` (DB, settings, library, planning, versions, presets, queues;
-  no worker or engine link yet), `ipc/` (messages and sockets) and
-  `worker/` (implemented), then `engine/`, plus `tests/` (see
+  `server/` (DB, settings, library, planning, versions, presets, queues,
+  job dispatch, the engine link, the player, supervision, cleanup, node
+  detection, the WebSocket), `ipc/` (messages and sockets) and `worker/`
+  (implemented), then `engine/` (not started), plus `tests/` (see
   `../docs/architecture.md` → package layout).
 - `ui/` — Vite + React + TypeScript (not yet scaffolded).
 - Runtime data (audio, per-track data dirs with stems, analysis and

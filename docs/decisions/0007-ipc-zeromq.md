@@ -1,9 +1,11 @@
 # 0007 — IPC over ZeroMQ
 
 Date: 2026-11-09. Status: accepted; amended 2026-11-11 (preview HWM, see
-Amendment). Implemented: the messages and sockets (`volu_gen/ipc/`) and
-the worker side (`volu_gen/worker/`). The server's side and the engine
-are still to come. Design in `../architecture.md` → IPC.
+Amendment; selector event loop, see Amendment 2). Implemented: the
+messages and sockets (`volu_gen/ipc/`), the worker side
+(`volu_gen/worker/`) and the server side (`volu_gen/server/dispatch.py`,
+`engine_link.py`). The engine is still to come. Design in
+`../architecture.md` → IPC.
 
 ## Context
 The API server talks to two child processes: the engine (real-time audio +
@@ -85,6 +87,25 @@ must deliver the newest frame, so the `PUB` keeps the default HWM:
 
 `volu_gen/ipc/sockets.py` → `bind_pub`; test:
 `tests/test_ipc.py::test_preview_is_latest_only`.
+
+## Amendment 2 (2026-11-11): the server runs on a selector event loop
+This is the result of the spike "`zmq.asyncio` inside uvicorn on Windows"
+(Consequences). `zmq.asyncio` does not work on the Proactor event loop,
+which is the default loop of uvicorn on Windows. The Proactor loop has
+no `add_reader`. pyzmq can add it only through tornado, which is not a
+dependency of this project. Therefore:
+- `volu serve` runs uvicorn with `loop="asyncio:SelectorEventLoop"`
+  (`volu_gen/server/cli.py`).
+- `Server.start` refuses to start on a Proactor loop, with a clear error.
+- The tests give `TestClient` `backend_options={"loop_factory":
+  asyncio.SelectorEventLoop}`.
+- A selector loop on Windows cannot run subprocesses with asyncio. The
+  server starts its children with `subprocess.Popen` and runs node pings
+  in threads (`volu_gen/server/children.py`, `nodes.py`).
+
+The selector loop on Windows is limited to 512 sockets. The server uses a
+few ZeroMQ sockets and one socket for each browser, so this limit does
+not apply.
 
 ## Alternatives considered
 - **`multiprocessing.connection`** — problems above.

@@ -122,6 +122,40 @@ def render_seconds_per_pixel_frame(db: sqlite3.Connection, last: int = 10) -> fl
     return seconds / work if work else None
 
 
+def job(db: sqlite3.Connection, job_id: int) -> sqlite3.Row | None:
+    return db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+
+
+def start(db: sqlite3.Connection, job_id: int) -> bool:
+    """Mark a queued job running. False if it is no longer queued."""
+    with db:
+        return db.execute("UPDATE jobs SET state = ?, started_at = ? WHERE id = ? AND state = ?",
+                          (RUNNING, dbm.now(), job_id, QUEUED)).rowcount == 1
+
+
+def finish(db: sqlite3.Connection, job_id: int, state: str, result: dict | None = None,
+           error: str | None = None, traceback: str | None = None):
+    with db:
+        db.execute("UPDATE jobs SET state = ?, finished_at = ?, result = ?, error = ?, traceback = ? WHERE id = ?",
+                   (state, dbm.now(), dbm.dumps(result), error, traceback, job_id))
+
+
+def requeue_running(db: sqlite3.Connection) -> list[int]:
+    """Jobs left running by a previous server go back to the queue (the
+    server kills a surviving worker at startup)."""
+    with db:
+        ids = [r["id"] for r in db.execute("SELECT id FROM jobs WHERE state = ?", (RUNNING,))]
+        db.execute("UPDATE jobs SET state = ?, started_at = NULL WHERE state = ?", (QUEUED, RUNNING))
+    return ids
+
+
+def open_anim_paths(db: sqlite3.Connection) -> set[str]:
+    """Output paths of queued and running renders. A finished render's file
+    exists before its result reaches the DB, so cleanup must keep these."""
+    return {r[0] for r in db.execute("SELECT json_extract(spec, '$.anim_path') FROM jobs "
+                                     "WHERE kind = 'render' AND state IN (?, ?)", OPEN)}
+
+
 def cancel(db: sqlite3.Connection, job_id: int) -> bool:
     """Cancel a queued job. False if it isn't queued (a running job is
     cancelled through the worker)."""

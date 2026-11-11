@@ -87,6 +87,24 @@ The UI talks only to the API server.
     recovery path for jobs.
   - The startup `*.tmp` cleanup runs only after the old worker is gone. This
     way it never deletes a file that is still being written.
+  - Jobs that the DB shows as running go back to the queue first.
+  - The startup order is: queue again the running jobs → kill a surviving
+    worker → delete leftover `*.tmp` files → start the worker → adopt an
+    engine that answers `hello` within 1 s, else start one → node pings →
+    animation file cleanup → first job dispatch (`server/core.py`).
+- **A clean stop** (Ctrl+C) sends `shutdown` to the engine, then kills the
+  engine and the worker if they did not exit. Only a crash of the server
+  leaves the engine playing.
+- **Connect-only mode** (`volu serve --connect-only`): the server starts no
+  children and restarts none. It connects to an engine and a worker that
+  the user started by hand on the same ports. It adopts the job that a
+  running worker reports. It deletes no `*.tmp` files, because it cannot
+  kill the worker. It can cancel only render jobs (`cancel`).
+- **Event loop:** the server needs a selector event loop, because
+  `zmq.asyncio` needs `add_reader`. On Windows, the default loop of uvicorn
+  is the Proactor loop. Therefore `volu serve` runs uvicorn with
+  `loop="asyncio:SelectorEventLoop"`. The server refuses to start on a
+  Proactor loop (decision 0007 → Amendment 2).
 - **SQLite** holds these items:
   - tracks (key, name, original path, duration, analysis status, BPM, tempo
     mode)
@@ -252,6 +270,18 @@ animation in `current`. It does this at the first frame after the loader
 decodes the playhead chunk of the new file. Audio and playhead stay the
 same.
 
+**Command line.** The server starts the engine with this command:
+
+```
+python -m volu_gen.engine --display <config> --data <data dir> --host <ip>
+    --control-port <port> --preview-port <port>
+```
+
+The engine binds its `ROUTER` on the control port and its `PUB` on the
+preview port, at the given host (IPC). Until the `volu_gen.engine` module
+exists, the server does not start an engine. It logs this once and runs
+without one. Transport commands then fail with 409.
+
 ### Worker
 - One process, one job at a time, below-normal priority. It follows the GPU
   rules in `decisions/0004-audio-analysis.md`: one model loaded at a time,
@@ -352,7 +382,22 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`. The full rationale is in
 | `play` / `pause` / `stop` / `seek{t}` | transport |
 | `clear_next` | Drops the preloaded next track |
 | `test{pattern, params}` / `test_off` | test patterns, calibration |
-| `shutdown` | |
+| `shutdown` | Sent on a clean server stop. The engine stops and exits |
+
+**What the server expects from the engine.** The player
+(`server/player.py`) relies on these rules:
+- `load(current)` replaces the current slot and keeps the transport state
+  (playing or paused). On a stopped engine, it leaves the engine paused at
+  `start`.
+- `stop` empties both slots.
+- The engine sends `released` for every animation file that it closes:
+  after a track change, a `swap_anim`, a `load` that replaces a slot,
+  `clear_next`, and `stop`. Until then, the server keeps the file
+  (Lifecycle → Cleanup).
+- `status` arrives at ~20 Hz. If no message arrives for 3 s on a
+  connected engine, the server kills the engine and starts it again
+  (`server/engine_link.py`). ZeroMQ heartbeats do not show a hung engine,
+  because libzmq answers them from its own thread.
 
 **Engine → server**
 
@@ -714,9 +759,16 @@ Measure it again on real renders.
   file is **not playable**. The queue skips it, Studio cannot play it, and
   the engine refuses it. An FPS re-render (Main flows 6) clears the mismatch.
   Switching back to the rate of the file also clears it.
-- **Cleanup:** the server deletes files that no DB row references and that
-  the engine has not opened. On startup, after any surviving worker is gone,
-  it also deletes leftover `*.tmp` files.
+- **Cleanup:** the server deletes animation files that no DB row
+  references (`server/cleanup.py`). It keeps these files:
+  - the output file of a queued or running render job
+  - every file that the engine may have open: the server sent it in `load`
+    or `swap_anim`, and the engine has not yet sent `released` for it
+
+  The server runs this cleanup at startup, after each job result, after a
+  `released`, and after a track removal. On startup, after any surviving
+  worker is gone, it also deletes leftover `*.tmp` files. In connect-only
+  mode it does not delete `*.tmp` files.
 
 ## Backend package layout
 | `volu_gen/` module | Purpose |
@@ -729,7 +781,7 @@ Measure it again on real renders.
 | `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI. Implemented (brightness is still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
 | `worker/` | worker process (job runner). Implemented: the jobs (`analyze`, `regrid`, `render`) and the process (`python -m volu_gen.worker`) |
-| `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, and the job queue with its order (HTTP API below). Still to come: job dispatch to the worker (the spec built when a job starts, with the re-plan of a stale plan and the segment times from the current grid; results applied to the DB; a running render cancelled on a display FPS change), file cleanup (replaced and unreferenced animation files, leftover `*.tmp` files), the engine link and supervision, node detection, and the WebSocket |
+| `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, the job queue with its order, job dispatch to the worker (`dispatch.py`), the engine link (`engine_link.py`), the player (`player.py`: engine modes, queue → engine slots, Studio), supervision of the children (`children.py`, `core.py`), file cleanup (`cleanup.py`), node detection (`nodes.py`) and the WebSocket (`live.py`). See API server, IPC and HTTP API above and below. The server starts the engine, but the engine itself is still to come |
 | `ipc/` | message models, connection helpers. Implemented (decision 0007) |
 
 ## HTTP API
@@ -766,6 +818,59 @@ address is `127.0.0.1:8770`. These rules apply:
   way a render uses the latest plan and the display FPS in effect at its
   start (decision 0010). A second render request for a version that has a
   queued render returns that job.
+- **Jobs:** `DELETE /jobs/{id}` cancels a queued job, or the running job.
+  A running render stops between chunks (`cancel`). The server stops any
+  other running job by restarting the worker. In connect-only mode, it
+  cannot do this, so it returns 409. A display FPS change cancels a running
+  render and queues it again.
+- **Track removal** (`DELETE /tracks/{id}`) cancels the running job of the
+  track. It returns 409 while the engine has the track loaded.
+- **Live state and transport** (Main flows 2, 5, 7):
+
+  | Route | Does |
+  |---|---|
+  | `GET /state` | The same data as the `state` message of the WebSocket (below) |
+  | `POST /player/play` | Plays the paused track. Else it plays the playback track from its start. Else it plays the first playable track of the queue. In Studio, it plays the Studio track |
+  | `POST /player/pause`, `/player/stop`, `/player/next` | Transport |
+  | `POST /player/seek` | `{"t": seconds}` |
+  | `POST /player/play-now` | `{"track_id": id}`. Plays the track now, in Playback. The queue does not change |
+  | `PUT /player/mode` | `{"mode": "playback" \| "studio"}` (Main flows 7) |
+  | `PUT /studio` | `{"track_id", "version_id"}`. The track open in Studio, and the version that plays there. `version_id` null: the draft if it is rendered, else the active version. A new track starts at 0. Another version of the same track keeps the playhead |
+  | `POST /display/test` | `{"pattern", "params"}`. Shows a test pattern or the calibration. The engine checks the name |
+  | `DELETE /display/test` | Stops the test pattern |
+  | `PUT /output/armed` | `{"armed": true \| false \| null}`. Overrides the arming. Null returns to automatic: armed while a drive node answers ping. An invalid display config is always disarmed |
+  | `GET /worker/log` | The latest log lines of the worker (`?lines=N`) |
+
+  The transport routes, the play-now route, and the test-pattern routes
+  return 409 when the engine is not connected. They also return 409 when
+  no track is playable. `PUT /player/mode` and `PUT /studio` work without
+  an engine. The server sends their result to the engine when it connects.
+- **WebSocket** `GET /ws` (`server/live.py`): the server pushes live state.
+  The UI sends nothing. The first message is a `state` snapshot. Each
+  browser has its own send queue, so a slow browser delays only itself.
+  There are two kinds of messages:
+  - **Events** go out in order:
+    - `{"type": "changed", "what", "track_id"?}`: a resource that the UI
+      got over HTTP changed. The UI gets it again. `what` is `tracks`,
+      `track` (with `track_id`: its analysis, plan and versions), `jobs`,
+      `queue`, `settings` or `presets`.
+    - `{"type": "error", "source", "kind", "message", "track_id"?}`: an
+      error from the engine or from planning (the re-plan after a
+      `regrid`).
+    - `{"type": "log", "source": "worker", "line"}`: a log line of the
+      worker.
+
+    If a browser falls 1,000 events behind, the server closes its
+    WebSocket (code 1013). The UI connects again and gets all data again.
+  - **Latest-only** messages: a new message replaces a waiting message of
+    the same key. A slow browser skips to the newest message.
+    - `state`: links to the engine and the worker, the player (mode, the
+      playback track and position, the Studio selection, the slots that the
+      engine holds), and output (armed, the online nodes).
+    - `status`: the engine `status` message, as JSON.
+    - `progress` (one key for each job): `{"type": "progress", "job_id",
+      "stage", "track", "frac", "eta"}`.
+    - binary preview frames: the engine preview message, unchanged (IPC).
 
 ## Settled
 These were open questions. They are now part of the design above:

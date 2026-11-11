@@ -1,13 +1,16 @@
 """The API server (docs/architecture.md → API server): the coordinator and
 the only holder of persistent state. The UI talks only to it.
 
-Built so far: the SQLite DB, settings, the library (import, removal,
-storage), analysis and peaks for the UI, planning, versions, presets, the
-play queue and the job queue. Still to come: running jobs on the worker,
-the engine link and supervision, and the WebSocket.
+It holds the SQLite DB, the settings, the library, planning, versions,
+presets and both queues; dispatches jobs to the worker and applies their
+results; drives the engine (configure, the play queue, Studio, swap_anim);
+starts and restarts both children; detects drive nodes by ping; cleans up
+animation files nothing uses; and pushes live state over a WebSocket.
 """
 
-from .app import Server, create_app
+from . import cleanup
+from .app import create_app
+from .core import Runtime, Server
 from .display import Display
 
-__all__ = ["Display", "Server", "create_app"]
+__all__ = ["Display", "Runtime", "Server", "cleanup", "create_app"]
