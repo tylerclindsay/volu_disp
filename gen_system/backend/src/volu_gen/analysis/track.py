@@ -18,6 +18,7 @@ import soundfile as sf
 from .audio import BASE_SR, STEM_NAMES, load_audio
 
 TRACKS_DIR = "tracks"  # under the data dir
+ANIM_DIR = "animations"  # rendered .anim files, in a track dir
 SOURCE_STEM = "source"  # the imported audio is `source<ext>`, e.g. source.flac
 # What a folder import picks up (any format ffmpeg decodes would work).
 AUDIO_EXTS = {".wav", ".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".aiff", ".aif"}

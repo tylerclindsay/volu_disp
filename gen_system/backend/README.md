@@ -22,8 +22,11 @@ job (`render_anim`: plan → blended, quantized frames → `.anim`;
 **`server/`** — the API server for the UI (`../../docs/architecture.md` →
 API server, HTTP API): SQLite DB, settings, track import and removal,
 analysis and peaks, planning, versions, presets, the play queue and the
-job queue. Still to come: the other methods, the worker and engine
-processes (and the server's link to them), and the WebSocket.
+job queue. **`ipc/`** — the messages between the server, engine and
+worker, and their ZeroMQ sockets (`../../docs/decisions/0007-ipc-zeromq.md`).
+**`worker/`** — the worker process: `analyze`, `regrid` and `render`
+jobs, one at a time. Still to come: the other methods, the engine, the
+server's link to the worker and engine, and the WebSocket.
 
 ## Setup (Windows, Python 3.11, NVIDIA GPU)
 ```
@@ -70,6 +73,16 @@ exists, so a track added through the server stays `pending` and can't be
 planned yet. Tracks the CLI analyzed show as orphaned directories until
 they are added through the server.
 
+## Worker
+```
+uv run python -m volu_gen.worker --display ../../config/displays/prototype.yaml
+```
+The server will start it; until then it can run alone. It binds
+`tcp://127.0.0.1:8773` and takes jobs from a DEALER on that port
+(`volu_gen.ipc`). It exits 3 s after the last server disconnects
+(`--server-timeout 0`: never). Analysis jobs use CUDA when available
+(`--device` to choose).
+
 ## Test patterns and fake nodes
 ```
 uv run python ../../tools/fake_node.py ../../config/displays/prototype.yaml --base-port 9000
@@ -88,3 +101,4 @@ uv run pytest
 ```
 Unit tests cover the pure-numpy parts (grid fit, windowed sections,
 phrases, mood normalization, waveform peaks, stem features, geometry, mapping, protocol test vectors, packetizer, loopback UDP) with synthetic inputs; no GPU or audio needed.
+The IPC and worker tests use real ZeroMQ sockets on free localhost ports.

@@ -1239,6 +1239,25 @@ wheels = [
 ]
 
 [[package]]
+name = "pyzmq"
+version = "27.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi", marker = "implementation_name == 'pypy'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e2/e1/ea46ab0d707219c098065a37d2add5b53d3b124241aa19429bcd0863e5b4/pyzmq-27.3.0.tar.gz", hash = "sha256:bbedb3d1d99babc625f1dd9d7438acefd442b36b75073fd6bc1ef7c0a4b96d56", size = 293249, upload-time = "2026-11-04T00:31:33.068Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8e/09/9f33bee7acbb95b0b8b4847a20f0ca15650bbfbed53795c2ca88f3390391/pyzmq-27.3.0-cp311-cp311-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:477b8ad30d66fc905c5388351e83b9ac25824b00e82c0d052b72ea6392636dfd", size = 875050, upload-time = "2026-11-04T00:28:50.344Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/e4/6e5969282f4e26fac4035e4fd1f1b5051fc230148cdcc3ea3587e229274b/pyzmq-27.3.0-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:b1d5c7d0903f5485e0689a115ca528748a9f287fa04ed6c46580772a2e725c46", size = 1913616, upload-time = "2026-11-04T00:29:03.6Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/3b/d3f6c6a3d46781f723ceb90fdfafe403fbcc5494b440e70c37c60e3acfdc/pyzmq-27.3.0-cp311-cp311-win_amd64.whl", hash = "sha256:df98c790f86b6aa2378b4bb94dec7b85b0adb195b880b41e429a4990aed2a8c9", size = 658252, upload-time = "2026-11-04T00:29:06.584Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/62/e4721d8b8b9de685323717489a408521067a786cabc2b73ccd91aa9b9077/pyzmq-27.3.0-cp312-abi3-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:858fe25231e0fd8612da142efde019faa5ef63fa150a821a27870e791b38c798", size = 855178, upload-time = "2026-11-04T00:29:13.042Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/b4/0d91b1e5ea8d659c1014ef39acfda279f4768fc4043120e98b764a59f1c9/pyzmq-27.3.0-cp312-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:d317685b83663fbd03ca8b5c34add7463e9bed094e3e1a69d2a895130b64ffaf", size = 1893864, upload-time = "2026-11-04T00:29:22.451Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/6d/23a02024011a494fb52bcfb179f10a3b230cff7b6fe0d5b8a3c775ce3b82/pyzmq-27.3.0-cp312-abi3-win_amd64.whl", hash = "sha256:3ea8e8fa5c097e68fef91d70b150fda96f307758103868018fc4deeb9c214122", size = 642389, upload-time = "2026-11-04T00:29:25.739Z" },
+    { url = "https://files.pythonhosted.org/packages/08/6d/00f9a4e5c17135cca4126fdc60df9a397066fcd8ba390dc11cc07ad5a5ed/pyzmq-27.3.0-pp311-pypy311_pp80-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2ad3ec36c9d107ef33063d167ce07d9066ff92eba23385e320f1c2472437bb8a", size = 761485, upload-time = "2026-11-04T00:31:07.551Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/be/aeaef2cfdded411909ce556631e029761dccce49cb2a078162a4d04416be/pyzmq-27.3.0-pp311-pypy311_pp80-win_amd64.whl", hash = "sha256:c72f9b1f6dbaf760daea97082506f4d6fd682a8512dbd320986b5268b189e727", size = 564188, upload-time = "2026-11-04T00:31:10.758Z" },
+]
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1670,12 +1689,14 @@ dependencies = [
     { name = "librosa" },
     { name = "loguru" },
     { name = "msaf" },
+    { name = "msgpack" },
     { name = "muq" },
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "pydantic" },
     { name = "python-multipart" },
     { name = "pyyaml" },
+    { name = "pyzmq" },
     { name = "scipy" },
     { name = "soundfile" },
     { name = "soxr" },
@@ -1705,12 +1726,14 @@ requires-dist = [
     { name = "librosa" },
     { name = "loguru" },
     { name = "msaf", specifier = "==0.1.80" },
+    { name = "msgpack", specifier = ">=1.2.4" },
     { name = "muq", specifier = "==0.1.0" },
     { name = "numpy" },
     { name = "omegaconf" },
     { name = "pydantic", specifier = ">=2.14.3" },
     { name = "python-multipart", specifier = ">=0.0.33" },
     { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pyzmq", specifier = ">=27.3.0" },
     { name = "scipy" },
     { name = "soundfile" },
     { name = "soxr" },

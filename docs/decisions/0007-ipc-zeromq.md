@@ -1,7 +1,9 @@
 # 0007 — IPC over ZeroMQ
 
-Date: 2026-11-09. Status: accepted; not yet implemented. Design in
-`../architecture.md` → IPC.
+Date: 2026-11-09. Status: accepted; amended 2026-11-11 (preview HWM, see
+Amendment). Implemented: the messages and sockets (`volu_gen/ipc/`) and
+the worker side (`volu_gen/worker/`). The server's side and the engine
+are still to come. Design in `../architecture.md` → IPC.
 
 ## Context
 The API server talks to two child processes: the engine (real-time audio +
@@ -32,7 +34,7 @@ messages.**
 | Link | Sockets | Notes |
 |---|---|---|
 | Server ↔ engine control | engine binds `ROUTER`, server connects `DEALER` | engine replies to the server identity from the latest `hello` |
-| Engine → server preview | engine binds `PUB`, server connects `SUB` | `CONFLATE` on the `SUB`, `SNDHWM` 1 on the `PUB`: latest-only, the engine never blocks |
+| Engine → server preview | engine binds `PUB`, server connects `SUB` | `CONFLATE` on the `SUB`: latest-only. A `PUB` never blocks (it drops at its HWM), so the engine never blocks. The `PUB` keeps the default HWM (Amendment) |
 | Server ↔ worker jobs | worker binds `ROUTER`, server connects `DEALER` | same as engine control |
 
 - **The child binds, the server connects**, so a restarted server just
@@ -66,6 +68,23 @@ while the engine restarts would act late on fresh state. So:
    1 s / 3 s) catch a hung peer. The engine's `status` stream doubles as a
    heartbeat. The worker exits when the server has been gone longer than
    the heartbeat timeout; the engine does not (it plays out current + next).
+
+## Amendment (2026-11-11): no `SNDHWM` 1 on the preview `PUB`
+The first version set `SNDHWM` 1 on the `PUB`. Measured with pyzmq 27.3
+on localhost, a `PUB` with a small HWM drops the **last** frames of a
+burst, which are the newest, even when the `SUB` keeps up. With 5,000
+frames sent in a tight loop to a `CONFLATE` `SUB`, the last frame
+received was 4951 of 4999 at HWM 1 and 2, 4954 at 4, 4966 at 16 and 4996
+at 64. Only the default HWM (1000) delivered the last frame. With HWM 1
+and a burst of 5 frames, the `SUB` received none of them. Latest-only
+must deliver the newest frame, so the `PUB` keeps the default HWM:
+- The engine still never blocks: a `PUB` drops at its HWM.
+- Frames queue at the `PUB` only while the server process is frozen. The
+  `SUB`'s I/O thread reads from TCP and conflates outside the server's
+  GIL. The worst case is 1,000 frames (≈ 60 MB at 20k pixels).
+
+`volu_gen/ipc/sockets.py` → `bind_pub`; test:
+`tests/test_ipc.py::test_preview_is_latest_only`.
 
 ## Alternatives considered
 - **`multiprocessing.connection`** — problems above.

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -40,8 +41,18 @@ def _needs(t: TrackDir, stage: str, force: set[str]) -> bool:
 
 
 def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] = frozenset(),
-            device: str = "cuda", log=print) -> dict:
-    """Run `stages` on `tracks`. Returns per-track, per-stage timing."""
+            device: str = "cuda", log=print, on_stage: Callable[[str, TrackDir], None] | None = None,
+            keep_going: bool = True) -> dict:
+    """Run `stages` on `tracks`. Returns per-track, per-stage timing.
+
+    on_stage(stage, track) is called before a stage runs on a track. With
+    keep_going, a stage that fails on a track is logged and recorded and
+    the rest go on; without, the exception propagates."""
+    def timed(t: TrackDir, stage: str) -> _timed:
+        if on_stage is not None:
+            on_stage(stage, t)
+        return _timed(stats, t, stage, log, keep_going)
+
     from .models import MODEL_IDS, STAGE_MODELS
     stats: dict = {}
     changed: set[int] = set()  # tracks whose grid-dependent results are stale
@@ -53,7 +64,7 @@ def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] 
         model = STAGE_MODELS[stage](device)
         for t in todo:
             log(f"  {t.name}")
-            with _timed(stats, t, stage, log):
+            with timed(t, stage):
                 _run_stage(stage, model, t)
                 t.data["models"][stage] = MODEL_IDS[stage]
                 changed.add(id(t))
@@ -69,7 +80,7 @@ def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] 
             if "tempo" not in t.data or not t.has_stems():
                 log(f"  {t.name}: needs stems + beats, skipped")
                 continue
-            with _timed(stats, t, "phrases", log):
+            with timed(t, "phrases"):
                 run_phrases(t)
             t.save()
             t.drop_audio()
@@ -84,7 +95,7 @@ def analyze(tracks: list[TrackDir], stages: list[str] = STAGES, force: set[str] 
             if not t.has_stems():
                 log(f"  {t.name}: needs stems, skipped")
                 continue
-            with _timed(stats, t, stage, log):
+            with timed(t, stage):
                 run(t)
             t.save()  # duration may be new
             t.drop_audio()
@@ -172,8 +183,9 @@ def library_moods(data_dir: Path) -> dict[str, dict[str, float]]:
 class _timed:
     """Times one stage on one track; records peak VRAM and errors."""
 
-    def __init__(self, stats: dict, t: TrackDir, stage: str, log=print):
+    def __init__(self, stats: dict, t: TrackDir, stage: str, log=print, keep_going: bool = True):
         self.stats, self.t, self.stage, self.log = stats, t, stage, log
+        self.keep_going = keep_going
 
     def __enter__(self):
         import torch
@@ -192,4 +204,5 @@ class _timed:
             entry["error"] = f"{exc_type.__name__}: {exc}"
             self.log(f"    ! {self.stage} failed: {entry['error']}")
         self.stats.setdefault(self.t.name, {})[self.stage] = entry
-        return exc_type is not None and issubclass(exc_type, Exception)  # log, go on to the next track
+        # log, go on to the next track
+        return self.keep_going and exc_type is not None and issubclass(exc_type, Exception)

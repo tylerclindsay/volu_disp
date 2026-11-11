@@ -13,9 +13,9 @@ import sqlite3
 import uuid
 from enum import IntEnum
 
+from ..analysis.track import ANIM_DIR
 from . import db as dbm
 
-ANIM_DIR = "animations"
 QUEUED, RUNNING, DONE, FAILED, CANCELLED = "queued", "running", "done", "failed", "cancelled"
 OPEN = (QUEUED, RUNNING)
 

@@ -266,9 +266,18 @@ same.
 
 | Job | Spec | Result |
 |---|---|---|
-| `analyze` | one track, stages, force set | key, BPM/grid summary, status |
-| `regrid` | key, BPM / grid-offset override | new phrases, events, bars (CPU, seconds) |
-| `render` | key, generator id + track params, plan (made by the server, `generators.md`), fps (the display FPS when the job starts), geometry hash, output path | anim path, frame count, generator version |
+| `analyze` | key, stages (default all), force set | key, duration, BPM/grid summary, time and peak VRAM of each stage that ran. The first stage that fails fails the job |
+| `regrid` | key, BPM + downbeat time (both empty: clear the override) | key, duration, BPM/grid summary. The new phrases, events and bars are in `analysis.json` (CPU, seconds) |
+| `render` | key, render id, output path, generator id, plan (made by the server, `generators.md`; it carries the track params), fps (the display FPS when the job starts), geometry hash | the version row's columns: render id, anim path, frame count, fps, pixel count, geometry hash, format version, generator id + version, the tempo override the render used |
+
+The worker refuses a render for another geometry hash than that of its own
+display config, an output path other than
+`tracks/<key>/animations/<render id>.anim`, and a stale plan
+(decision 0018).
+
+Run it alone with `python -m volu_gen.worker --display <config>`
+(`worker/__main__.py`). The main thread owns the socket. The job runs in a
+second thread, which only queues messages for the main thread to send.
 
 **Tracks are processed in series.** A multi-file upload or a folder scan
 queues one `analyze` job for each track. Each track gets its default
@@ -300,15 +309,22 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`. The full rationale is in
 | Link | Sockets |
 |---|---|
 | Server ↔ engine control | engine binds `ROUTER`, server connects `DEALER` |
-| Engine → server preview | engine binds `PUB`, server connects `SUB` (`CONFLATE`: latest-only. The engine never blocks) |
+| Engine → server preview | engine binds `PUB`, server connects `SUB` (`CONFLATE`: latest-only. The engine never blocks. The `PUB` keeps the default HWM: decision 0007 → Amendment) |
 | Server ↔ worker jobs | worker binds `ROUTER`, server connects `DEALER` |
 
 - **The child binds and the server connects.** This way a restarted server
   can reconnect to a running engine. ZeroMQ reconnects automatically.
 - **Messages:** pydantic models in one shared module
-  (`volu_gen/ipc/messages.py`), encoded with MessagePack (no pickle). A
-  preview frame is a small fixed header plus raw RGB bytes. It uses its own
-  socket, so bulk data never delays control messages.
+  (`volu_gen/ipc/messages.py`), encoded with MessagePack (no pickle). Each
+  message has a `type` field. A preview frame is a 16-byte little-endian
+  header (frame index `int64`, track id `int64`, −1 for none) and then the
+  raw RGB bytes in geometry order. It uses its own socket, so bulk data
+  never delays control messages. Paths in messages are relative to the data
+  dir. The server gives each child the data dir when it starts it.
+- **Sockets:** `volu_gen/ipc/sockets.py` makes all of them. The server's
+  `DEALER`s keep the routing id `server` across reconnects. The children's
+  `ROUTER`s use `ROUTER_MANDATORY` (a send to an absent server fails, and
+  the message is not queued) and `ROUTER_HANDOVER`.
 - **Connection lifecycle.** ZeroMQ hides connections. Without extra steps,
   it would queue messages for an absent peer. These steps prevent that:
   - `ZMQ_IMMEDIATE` on the sockets of the server: nothing is queued while a
@@ -316,8 +332,9 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`. The full rationale is in
   - A `hello` handshake on every (re)connect. Then the server sends the full
     `configure` (engine) or submits the job again (worker).
   - Liveness: process handles show crashes. ZeroMQ heartbeats show hangs.
-- Ports are fixed, configurable defaults. The server passes them to the
-  children at start.
+- Ports are fixed, configurable defaults: engine control 8771, engine
+  preview 8772, worker 8773 (the HTTP port is 8770). The server passes
+  them to the children at start.
 - The control thread of the engine owns its sockets (they are not
   thread-safe). libzmq does the I/O in its own C thread, outside the GIL.
 
@@ -345,14 +362,26 @@ ZeroMQ (`pyzmq`) over `tcp://127.0.0.1`. The full rationale is in
 | `released` | The anim path is no longer open (safe to delete) |
 | `error` | kind, message |
 
-**Server → worker:** `hello`, `submit{job_id, kind, spec}`, and
-`cancel{job_id}`. A `cancel` works for render jobs only, and the worker
-honors it between chunks. To cancel any other job, kill and restart the
-worker. The new worker reconnects and says `hello`.
+**Server → worker:** `hello`, `submit{job_id, spec}` (the spec has a
+`kind`: `analyze`, `regrid` or `render`), and `cancel{job_id}`. A `cancel`
+works for render jobs only, and the worker honors it between chunks. To
+cancel any other job, kill and restart the worker. The new worker
+reconnects and says `hello`.
 
 **Worker → server:** `hello{pid, job_id}`,
 `progress{job_id, stage, track, frac, eta}`, `done{job_id, result}`,
-`failed{job_id, error, traceback}`, and `log{line}`.
+`failed{job_id, error, traceback}`, `cancelled{job_id}` (a render stopped
+by `cancel`; it wrote no file), and `log{line}`.
+- The worker runs one job at a time. It refuses a `submit` while a job
+  runs (`failed`: busy). It ignores a second `submit` of the running job.
+- `progress` is latest-only: the worker sends at most one every 50 ms.
+- A result (`done`, `failed`, `cancelled`) that the worker cannot send
+  because the server is gone is kept. The worker sends it before its reply
+  to the next `hello`. Until the server has the result, the job counts as
+  running, and `hello` reports its id. So a reconnected server always sees
+  the job as either running or finished.
+- The worker exits when no server has been connected for the heartbeat
+  timeout (3 s).
 
 ## Main flows
 1. **Add track.** The UI sends `POST /tracks` (file upload) or
@@ -696,9 +725,9 @@ Measure it again on real renders.
 | `generators/` | director, plan, methods (`generators.md`). Implemented: `Music`, `RenderContext`, the method interface, the plan model, the director, the render job, and the first methods (`geometry`, `raindrops`, `strobe`, `galaxy`, decision 0019). The other methods are still to come. The server imports it (planning: the director and the `choose_params` of each method). The worker imports it (rendering). Therefore it has no torch or other heavy imports at module level |
 | `output/` | protocol v2, packetizer, UDP sender, simulated node, test-pattern CLI. Implemented (brightness is still to come) |
 | `engine/` | engine process (threads, clock, sources, slots) |
-| `worker/` | worker process (job runner) |
+| `worker/` | worker process (job runner). Implemented: the jobs (`analyze`, `regrid`, `render`) and the process (`python -m volu_gen.worker`) |
 | `server/` | API server (FastAPI, DB, queues, supervision). Implemented: the DB, settings, the library (import, removal, storage), analysis and peaks for the UI, planning, versions, presets, the play queue, and the job queue (HTTP API below). Still to come: job dispatch to the worker, the engine link and supervision, node detection, and the WebSocket |
-| `ipc/` | message models, connection helpers |
+| `ipc/` | message models, connection helpers. Implemented (decision 0007) |
 
 ## HTTP API
 The server serves the UI API under `/api` (`server/app.py`). FastAPI

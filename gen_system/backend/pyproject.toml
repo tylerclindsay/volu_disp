@@ -37,6 +37,9 @@ dependencies = [
     "fastapi>=0.162.4",
     "uvicorn[standard]>=0.54.0",
     "python-multipart>=0.0.33",
+    # IPC between the server, engine and worker (docs/decisions/0007-ipc-zeromq.md).
+    "pyzmq>=27.3.0",
+    "msgpack>=1.2.4",
 ]
 
 [project.scripts]

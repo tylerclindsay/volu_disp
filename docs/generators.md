@@ -482,7 +482,7 @@ Built: `volu_gen/generators/` → `music.py`, `context.py`, `method.py`
 2. `Music`, `RenderContext`, the director, the plan, and the render job.
    *Built:* `Music`, `RenderContext`, the method interface and
    registry, the plan model, the director, and the render job (the worker
-   process that runs it comes with `worker/`). The director's lengths,
+   process runs it: `worker/`). The director's lengths,
    levels and contrast weights are tuned by eye once the first methods
    exist.
 3. First methods: `geometry`, `raindrops`, `strobe`, `galaxy` (they cover
